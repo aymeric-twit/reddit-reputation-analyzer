@@ -254,17 +254,24 @@ function initDashboard() {
  * @param {string} nomVue Nom de la vue a afficher
  */
 function changerVue(nomVue) {
-    document.querySelectorAll('[class*="vue-"]').forEach(div => {
-        if (div.classList.contains(`vue-${nomVue}`)) {
-            div.style.display = '';
-        } else if (Array.from(div.classList).some(c => c.startsWith('vue-'))) {
-            div.style.display = 'none';
+    const vues = ['dashboard', 'nouvelle-analyse', 'historique', 'parametres'];
+    vues.forEach(vue => {
+        const el = document.getElementById(`vue-${vue}`);
+        if (el) {
+            el.style.display = (vue === nomVue) ? '' : 'none';
         }
     });
 
     document.querySelectorAll('[data-vue]').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.vue === nomVue);
     });
+
+    // Charger les donnees de la vue si necessaire
+    if (nomVue === 'historique') {
+        chargerHistorique();
+    } else if (nomVue === 'parametres') {
+        chargerParametres();
+    }
 }
 
 /**
@@ -282,7 +289,7 @@ async function chargerMarques() {
         if (!Array.isArray(marques) || marques.length === 0) {
             grille.innerHTML = '';
             if (etatVide) etatVide.style.display = '';
-            mettreAJourKpis([], 0);
+            mettreAJourKpis([]);
             return;
         }
 
@@ -300,13 +307,11 @@ async function chargerMarques() {
 
         mettreAJourKpis(marques);
     } catch (erreur) {
-        grille.innerHTML = `
-            <div class="col-12">
-                <div class="alert alert-danger">
-                    Impossible de charger les marques : ${erreur.message}
-                </div>
-            </div>
-        `;
+        // En cas d'erreur (serveur eteint, base vide...), afficher l'etat vide
+        grille.innerHTML = '';
+        if (etatVide) etatVide.style.display = '';
+        mettreAJourKpis([]);
+        console.warn('Chargement marques:', erreur.message);
     }
 }
 
@@ -316,38 +321,51 @@ async function chargerMarques() {
  * @param {Array} marques Liste des marques
  */
 function mettreAJourKpis(marques) {
-    const elTotal = document.getElementById('kpi-total-marques');
-    const elScore = document.getElementById('kpi-score-moyen');
-    const elAnalyses = document.getElementById('kpi-analyses-mois');
-    const elAlertes = document.getElementById('kpi-alertes');
+    const conteneur = document.getElementById('kpiDashboard');
+    if (!conteneur) return;
 
-    if (elTotal) elTotal.textContent = marques.length;
+    const nbMarques = marques.length;
 
-    if (elScore && marques.length > 0) {
-        const scoreMoyen = marques.reduce((acc, m) => acc + (m.score || 0), 0) / marques.length;
-        elScore.textContent = Math.round(scoreMoyen);
-        const info = formaterScore(scoreMoyen);
-        elScore.className = info.classe;
-    } else if (elScore) {
-        elScore.textContent = '—';
+    let scoreMoyen = 0;
+    const marquesAvecScore = marques.filter(m => (m.score || m.score_reputation) != null && (m.score || m.score_reputation) > 0);
+    if (marquesAvecScore.length > 0) {
+        scoreMoyen = marquesAvecScore.reduce((acc, m) => acc + (m.score || m.score_reputation || 0), 0) / marquesAvecScore.length;
     }
+    const infoScore = formaterScore(scoreMoyen);
 
-    if (elAnalyses) {
-        const maintenant = new Date();
-        const moisCourant = maintenant.getMonth();
-        const anneeCourante = maintenant.getFullYear();
-        const analysesCeMois = marques.filter(m => {
-            if (!m.derniere_analyse) return false;
-            const d = new Date(m.derniere_analyse);
-            return d.getMonth() === moisCourant && d.getFullYear() === anneeCourante;
-        }).length;
-        elAnalyses.textContent = analysesCeMois;
-    }
+    const maintenant = new Date();
+    const moisCourant = maintenant.getMonth();
+    const anneeCourante = maintenant.getFullYear();
+    const analysesCeMois = marques.filter(m => {
+        if (!m.derniere_analyse) return false;
+        const d = new Date(m.derniere_analyse);
+        return d.getMonth() === moisCourant && d.getFullYear() === anneeCourante;
+    }).length;
 
-    if (elAlertes) {
-        const alertes = marques.filter(m => (m.score || 0) < 40).length;
-        elAlertes.textContent = alertes;
-    }
+    const alertes = marques.filter(m => (m.score || 0) > 0 && (m.score || 0) < 40).length;
+
+    conteneur.innerHTML = `
+        <div class="kpi-card">
+            <div class="kpi-icone"><i class="bi bi-bookmark-star"></i></div>
+            <div class="kpi-valeur">${nbMarques}</div>
+            <div class="kpi-label">Marques suivies</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-icone"><i class="bi bi-speedometer2"></i></div>
+            <div class="kpi-valeur ${infoScore.classe}">${nbMarques > 0 ? Math.round(scoreMoyen) : '—'}</div>
+            <div class="kpi-label">Score moyen</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-icone"><i class="bi bi-graph-up"></i></div>
+            <div class="kpi-valeur">${analysesCeMois}</div>
+            <div class="kpi-label">Analyses ce mois</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-icone"><i class="bi bi-exclamation-triangle"></i></div>
+            <div class="kpi-valeur ${alertes > 0 ? 'score-low' : ''}">${alertes}</div>
+            <div class="kpi-label">Alertes</div>
+        </div>
+    `;
 }
 
 /**
@@ -357,7 +375,7 @@ function mettreAJourKpis(marques) {
  * @returns {string} HTML de la carte
  */
 function renderCarteMarque(marque) {
-    const score = marque.score || 0;
+    const score = marque.score_reputation || marque.score || 0;
     const info = formaterScore(score);
 
     let couleurBordure;
@@ -378,15 +396,16 @@ function renderCarteMarque(marque) {
         flecheTendance = '<span class="text-muted" title="Stable"><i class="bi bi-dash-circle"></i></span>';
     }
 
-    const derniereAnalyse = marque.derniere_analyse
-        ? formaterDate(marque.derniere_analyse)
+    const derniereAnalyse = marque.date_derniere_analyse || marque.derniere_analyse
+        ? formaterDate(marque.date_derniere_analyse || marque.derniere_analyse)
         : 'Aucune analyse';
 
-    const lienResultats = marque.derniere_analyse_id
-        ? `${BASE_URL}/resultats.php?analyse_id=${marque.derniere_analyse_id}`
+    const analyseId = marque.derniere_analyse_id || marque.id_derniere_analyse;
+    const lienResultats = analyseId
+        ? `${BASE_URL}/resultats.php?analyse_id=${analyseId}`
         : '#';
 
-    const boutonVoir = marque.derniere_analyse_id
+    const boutonVoir = analyseId
         ? `<a href="${lienResultats}" class="btn btn-sm btn-primary">Voir resultats</a>`
         : `<button class="btn btn-sm btn-primary" disabled>Aucun resultat</button>`;
 
@@ -527,15 +546,15 @@ function demarrerSuiviProgression(jobId, analyseId) {
     }
 
     const barreProgression = document.getElementById('barreProgression');
-    const labelEtape = document.getElementById('labelEtape');
-    const detailProgression = document.getElementById('detailProgression');
+    const labelEtape = document.getElementById('etapeAnalyse');
+    const detailProgression = document.getElementById('detailsProgression');
 
     const intervalle = setInterval(async () => {
         try {
             const prog = await appelerApi(`/progress.php?job_id=${jobId}`);
 
             // Mise a jour de la barre de progression
-            const pourcentage = prog.progression || 0;
+            const pourcentage = prog.pourcentage || 0;
             if (barreProgression) {
                 barreProgression.style.width = `${pourcentage}%`;
                 barreProgression.setAttribute('aria-valuenow', pourcentage);
@@ -548,8 +567,8 @@ function demarrerSuiviProgression(jobId, analyseId) {
             }
 
             // Mise a jour des details
-            if (detailProgression && prog.detail) {
-                detailProgression.textContent = prog.detail;
+            if (detailProgression && prog.details) {
+                detailProgression.textContent = prog.details;
             }
 
             // Analyse terminee : redirection
@@ -668,7 +687,7 @@ async function chargerHistorique(page = 1) {
  * @returns {string} HTML de la ligne
  */
 function renderLigneHistorique(analyse) {
-    const score = analyse.score || 0;
+    const score = analyse.score_reputation || analyse.score || 0;
     const info = formaterScore(score);
 
     let badgeStatut;
@@ -706,10 +725,10 @@ function renderLigneHistorique(analyse) {
     return `
         <tr>
             <td><strong>${echapper(analyse.marque_nom || analyse.marque || '')}</strong></td>
-            <td>${formaterDate(analyse.date_creation || analyse.date)}</td>
-            <td>${echapper(analyse.periode || '')}</td>
+            <td>${formaterDate(analyse.date_lancement || analyse.date_creation || '')}</td>
+            <td>${echapper(analyse.periode_debut ? analyse.periode_debut + ' → ' + (analyse.periode_fin || '') : '')}</td>
             <td><span class="badge ${couleurScore}">${info.valeur} — ${info.label}</span></td>
-            <td>${analyse.nombre_posts || 0}</td>
+            <td>${analyse.nb_publications || analyse.nombre_posts || 0}</td>
             <td>${badgeStatut}</td>
             <td>
                 <div class="btn-group btn-group-sm">
@@ -807,8 +826,11 @@ function renderPagination(pagination, pageCourante = 1) {
  */
 async function supprimerAnalyse(analyseId) {
     try {
-        await appelerApi(`/api/historique.php?analyse_id=${analyseId}`, {
-            method: 'DELETE',
+        const formData = new FormData();
+        formData.append('analyse_id', analyseId);
+        await appelerApi('/api/supprimer-analyse.php', {
+            method: 'POST',
+            body: formData,
         });
         afficherToast('Analyse supprimee.', 'success');
     } catch (erreur) {
@@ -825,7 +847,7 @@ async function supprimerAnalyse(analyseId) {
  */
 async function chargerParametres() {
     const formApi = document.getElementById('formulaireParametresApi');
-    const formDefauts = document.getElementById('formulaireParametresDefauts');
+    const formDefauts = document.getElementById('formulaireParametresDefaut');
     if (!formApi && !formDefauts) return;
 
     try {
@@ -872,7 +894,7 @@ function remplirFormulaire(formulaire, donnees) {
  * Initialise les formulaires de parametres.
  */
 function initFormulairesParametres() {
-    const formulaires = document.querySelectorAll('#formulaireParametresApi, #formulaireParametresDefauts');
+    const formulaires = document.querySelectorAll('#formulaireParametresApi, #formulaireParametresDefaut');
 
     formulaires.forEach(form => {
         if (!form) return;
@@ -2436,6 +2458,8 @@ function renderComparaisonTableau(data) {
    ========================================================================== */
 
 document.addEventListener('DOMContentLoaded', () => {
+    configurerChartJs();
+
     if (document.querySelector('[data-analyse-id]')) {
         initResultats();
     } else if (document.querySelector('[data-page="comparaison"]')) {

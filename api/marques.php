@@ -94,16 +94,18 @@ try {
         $nbAlertes = (int) ($resultAlerte['nb'] ?? 0);
 
         $resultats[] = [
-            'id'                    => $marqueId,
-            'nom'                   => $marque['nom'],
-            'slug'                  => $marque['slug'],
-            'date_creation'         => $marque['date_creation'],
-            'score_reputation'      => $scoreDernier,
+            'id'                      => $marqueId,
+            'nom'                     => $marque['nom'],
+            'slug'                    => $marque['slug'],
+            'date_creation'           => $marque['date_creation'],
+            'score'                   => $scoreDernier,
+            'score_reputation'        => $scoreDernier,
             'statut_derniere_analyse' => $statutDernier,
-            'date_derniere_analyse'  => $dateDerniereAnalyse,
-            'tendance'              => $tendance,
-            'nb_publications'       => $nbPublications,
-            'nb_alertes'            => $nbAlertes,
+            'derniere_analyse'        => $dateDerniereAnalyse,
+            'derniere_analyse_id'     => $derniereAnalyse['id'] ?? null,
+            'tendance'                => $tendance,
+            'nb_publications'         => $nbPublications,
+            'nb_alertes'              => $nbAlertes,
         ];
     }
 
