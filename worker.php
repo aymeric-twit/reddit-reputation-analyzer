@@ -154,48 +154,47 @@ try {
         'date_lancement'  => date('Y-m-d H:i:s'),
     ], 'id = ?', [$analyseId]);
 
-    // --- Etape 1 : Authentification Reddit (5%) ---
-    mettreAJourProgression($dossierJob, 5, 'Authentification Reddit...', 'Connexion a l\'API Reddit');
+    // --- Etape 1 : Connexion Reddit (5%) ---
+    mettreAJourProgression($dossierJob, 5, 'Connexion a Reddit...', 'Detection du mode de collecte');
 
     $collecteur = new CollecteurReddit();
     $collecteur->authentifier();
+    $modeCollecte = $collecteur->obtenirMode();
+
+    $labelMode = match ($modeCollecte) {
+        'api'         => 'API OAuth2',
+        'json_public' => 'JSON public (sans credentials)',
+        'bing'        => 'Recherche Bing site:reddit.com',
+        default       => $modeCollecte,
+    };
+    mettreAJourProgression($dossierJob, 8, 'Connexion a Reddit...', "Mode : {$labelMode}");
 
     // --- Etape 2 : Collecte des publications (10-40%) ---
     mettreAJourProgression($dossierJob, 10, 'Collecte des publications...', '0/' . $limite . ' publications');
 
-    $termesRecherche = array_merge([$marque], $motsCles);
-    $publications = [];
-    $totalCollecte = 0;
-
-    foreach ($termesRecherche as $indexTerme => $terme) {
-        $subsCibles = !empty($subreddits) ? $subreddits : null;
-
-        $resultats = $collecteur->rechercherPublications(
-            terme: $terme,
-            periode: $periode,
-            limite: $limite,
-            subreddits: $subsCibles,
-            rappelProgression: function (int $collectees) use ($dossierJob, $limite, &$totalCollecte): void {
-                $totalCollecte = $collectees;
-                $pourcentage = 10 + (int) (($collectees / max($limite, 1)) * 30);
-                $pourcentage = min($pourcentage, 40);
-                mettreAJourProgression(
-                    $dossierJob,
-                    $pourcentage,
-                    'Collecte des publications...',
-                    "{$collectees}/{$limite} publications"
-                );
-            }
-        );
-
-        $publications = array_merge($publications, $resultats);
-    }
+    $publications = $collecteur->rechercherPublications(
+        marque: $marque,
+        periode: $periode,
+        limite: $limite,
+        subreddits: $subreddits,
+        motsCles: $motsCles,
+        rappelProgression: function (int $collectees) use ($dossierJob, $limite): void {
+            $pourcentage = 10 + (int) (($collectees / max($limite, 1)) * 30);
+            $pourcentage = min($pourcentage, 40);
+            mettreAJourProgression(
+                $dossierJob,
+                $pourcentage,
+                'Collecte des publications...',
+                "{$collectees}/{$limite} publications"
+            );
+        }
+    );
 
     // Dedoublonnage par reddit_id
     $publicationsUniques = [];
     foreach ($publications as $pub) {
-        $redditId = $pub['reddit_id'] ?? $pub['id'] ?? '';
-        if (!isset($publicationsUniques[$redditId])) {
+        $redditId = $pub['reddit_id'] ?? '';
+        if ($redditId !== '' && !isset($publicationsUniques[$redditId])) {
             $publicationsUniques[$redditId] = $pub;
         }
     }
@@ -206,7 +205,11 @@ try {
 
     // Trier par score et prendre les top publications pour les commentaires
     usort($publications, fn(array $a, array $b): int => ($b['score'] ?? 0) <=> ($a['score'] ?? 0));
-    $publicationsTop = array_slice($publications, 0, min(50, count($publications)));
+    $nbTopPubs = min(20, count($publications)); // Limiter pour eviter trop de requetes
+    if ($modeCollecte === 'bing') {
+        $nbTopPubs = min(10, count($publications)); // Encore moins en mode Bing
+    }
+    $publicationsTop = array_slice($publications, 0, $nbTopPubs);
     $commentaires = [];
 
     foreach ($publicationsTop as $index => $pub) {
@@ -218,11 +221,10 @@ try {
             ($index + 1) . '/' . count($publicationsTop) . ' publications traitees'
         );
 
-        $redditId = $pub['reddit_id'] ?? $pub['id'] ?? '';
-        $subreddit = $pub['subreddit'] ?? '';
+        $redditId = $pub['reddit_id'] ?? '';
 
-        if ($redditId !== '' && $subreddit !== '') {
-            $comms = $collecteur->recupererCommentaires($redditId, $subreddit);
+        if ($redditId !== '') {
+            $comms = $collecteur->recupererCommentaires($redditId);
             $commentaires = array_merge($commentaires, $comms);
         }
     }
@@ -231,25 +233,41 @@ try {
     mettreAJourProgression($dossierJob, 60, 'Analyse de sentiment...', 'Traitement des textes');
 
     $analyseurSentiment = new AnalyseurSentiment();
-    $tousLesTextes = array_merge($publications, $commentaires);
+    $totalTextes = count($publications) + count($commentaires);
+    $indexGlobal = 0;
 
-    foreach ($tousLesTextes as $index => &$texte) {
-        $contenu = $texte['titre'] ?? $texte['contenu'] ?? $texte['body'] ?? '';
-        $resultatSentiment = $analyseurSentiment->analyser((string) $contenu);
-        $texte['score_sentiment'] = $resultatSentiment['score'];
-        $texte['label_sentiment'] = $resultatSentiment['label'];
+    // Analyser le sentiment sur les publications
+    foreach ($publications as &$pub) {
+        $contenu = ($pub['titre'] ?? '') . ' ' . ($pub['contenu'] ?? '');
+        $resultat = $analyseurSentiment->analyser(trim($contenu));
+        $pub['score_sentiment'] = $resultat['score'];
+        $pub['label_sentiment'] = $resultat['label'];
+        $pub['score_engagement'] = ($pub['score'] ?? 0) * 0.5 + ($pub['nb_commentaires'] ?? 0) * 0.3 + ($pub['awards'] ?? 0) * 0.2;
 
-        if ($index % 50 === 0) {
-            $pourcentage = 60 + (int) (($index / max(count($tousLesTextes), 1)) * 15);
-            mettreAJourProgression(
-                $dossierJob,
-                min($pourcentage, 75),
-                'Analyse de sentiment...',
-                ($index + 1) . '/' . count($tousLesTextes) . ' textes analyses'
-            );
+        if ($indexGlobal % 50 === 0) {
+            $pourcentage = 60 + (int) (($indexGlobal / max($totalTextes, 1)) * 15);
+            mettreAJourProgression($dossierJob, min($pourcentage, 75), 'Analyse de sentiment...', ($indexGlobal + 1) . "/{$totalTextes} textes");
         }
+        $indexGlobal++;
     }
-    unset($texte);
+    unset($pub);
+
+    // Analyser le sentiment sur les commentaires
+    foreach ($commentaires as &$comm) {
+        $contenu = $comm['contenu'] ?? '';
+        $resultat = $analyseurSentiment->analyser($contenu);
+        $comm['score_sentiment'] = $resultat['score'];
+        $comm['label_sentiment'] = $resultat['label'];
+
+        if ($indexGlobal % 50 === 0) {
+            $pourcentage = 60 + (int) (($indexGlobal / max($totalTextes, 1)) * 15);
+            mettreAJourProgression($dossierJob, min($pourcentage, 75), 'Analyse de sentiment...', ($indexGlobal + 1) . "/{$totalTextes} textes");
+        }
+        $indexGlobal++;
+    }
+    unset($comm);
+
+    $tousLesTextes = array_merge($publications, $commentaires);
 
     // --- Etape 5 : Extraction des sujets (75-85%) ---
     mettreAJourProgression($dossierJob, 75, 'Extraction des sujets...', 'Identification des themes recurrents');
@@ -270,9 +288,11 @@ try {
     mettreAJourProgression($dossierJob, 90, 'Calcul du score de reputation...', 'Agregation des metriques');
 
     $calculateurReputation = new CalculateurReputation();
-    $scoreReputation = $calculateurReputation->calculer($publications, $commentaires, $sujetsExtraits);
+    $scoreReputation = $calculateurReputation->calculerScore($publications, $commentaires);
+    $facteurs = $calculateurReputation->extraireFacteurs($publications, $sujetsExtraits);
+    $scoreReputation['facteurs'] = $facteurs;
 
-    mettreAJourProgression($dossierJob, 95, 'Calcul du score de reputation...', 'Score : ' . round($scoreReputation['score'], 1) . '/100');
+    mettreAJourProgression($dossierJob, 95, 'Calcul du score de reputation...', 'Score : ' . round($scoreReputation['score_global'], 1) . '/100');
 
     // --- Etape 8 : Finalisation (95-100%) ---
     mettreAJourProgression($dossierJob, 95, 'Finalisation...', 'Enregistrement des resultats en base');
@@ -425,24 +445,24 @@ try {
 
         // Mettre a jour l'analyse avec les resultats
         $bd->modifier('analyses', [
-            'score_reputation' => round($scoreReputation['score'], 2),
+            'score_reputation' => round($scoreReputation['score_global'], 2),
             'stats_globales'   => json_encode($statsGlobales, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE),
             'statut'           => 'termine',
-            'periode_debut'    => $scoreReputation['periode_debut'] ?? date('Y-m-d', strtotime("-1 {$periode}")),
-            'periode_fin'      => $scoreReputation['periode_fin'] ?? date('Y-m-d'),
+            'periode_debut'    => date('Y-m-d', strtotime("-1 {$periode}")),
+            'periode_fin'      => date('Y-m-d'),
         ], 'id = ?', [$analyseId]);
 
         $bd->connexion()->commit();
 
         // Verifier si le score necessite une alerte
         $seuilAlerte = (float) ($bd->obtenirParametre('seuil_alerte_score', '40') ?? '40');
-        if ($scoreReputation['score'] < $seuilAlerte) {
+        if ($scoreReputation['score_global'] < $seuilAlerte) {
             $bd->inserer('alertes', [
                 'marque_id' => $marqueId,
                 'type'      => 'score_bas',
                 'message'   => sprintf(
                     'Score de reputation bas (%.1f/100) pour "%s" - analyse du %s',
-                    $scoreReputation['score'],
+                    $scoreReputation['score_global'],
                     $marque,
                     date('d/m/Y')
                 ),
@@ -462,7 +482,7 @@ try {
         'analyse_id'  => $analyseId,
     ]);
 
-    fwrite(STDOUT, "Analyse #{$analyseId} terminee avec succes. Score : {$scoreReputation['score']}/100\n");
+    fwrite(STDOUT, "Analyse #{$analyseId} terminee avec succes. Score : {$scoreReputation['score_global']}/100\n");
 
 } catch (\Throwable $e) {
     // Mise a jour du statut en erreur
