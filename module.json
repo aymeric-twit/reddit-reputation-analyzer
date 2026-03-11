@@ -1,0 +1,31 @@
+{
+    "slug": "reddit-reputation",
+    "name": "Reddit Reputation",
+    "description": "Analyse de réputation de marque sur Reddit — sentiment, sujets, engagement et opportunités",
+    "version": "1.0.0",
+    "icon": "bi-reddit",
+    "entry_point": "index.php",
+    "sort_order": 90,
+    "quota_mode": "api_call",
+    "default_quota": 500,
+    "display_mode": "embedded",
+    "env_keys": ["REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET"],
+    "api_doc_url": "https://www.reddit.com/dev/api/",
+    "languages": [],
+    "routes": [
+        {"path": "resultats.php", "method": "GET", "type": "page"},
+        {"path": "comparaison.php", "method": "GET", "type": "page"},
+        {"path": "progress.php", "method": "GET", "type": "ajax"},
+        {"path": "worker.php", "method": "GET", "type": "ajax"},
+        {"path": "api/lancer-analyse.php", "method": "POST", "type": "ajax"},
+        {"path": "api/marques.php", "method": "GET", "type": "ajax"},
+        {"path": "api/resultats.php", "method": "GET", "type": "ajax"},
+        {"path": "api/historique.php", "method": "GET", "type": "ajax"},
+        {"path": "api/comparaison.php", "method": "GET", "type": "ajax"},
+        {"path": "api/parametres.php", "method": "GET", "type": "ajax"},
+        {"path": "api/parametres.php", "method": "POST", "type": "ajax"},
+        {"path": "api/export.php", "method": "GET", "type": "ajax"},
+        {"path": "api/supprimer-analyse.php", "method": "POST", "type": "ajax"},
+        {"path": "api/supprimer-marque.php", "method": "POST", "type": "ajax"}
+    ]
+}

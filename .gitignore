@@ -1,0 +1,5 @@
+.env
+data/reddit-reputation.sqlite
+data/jobs/
+vendor/
+.claude/
