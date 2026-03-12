@@ -169,6 +169,7 @@ class CollecteurReddit
         array $motsCles,
     ): array {
         $publicationsMap = []; // Indexees par reddit_id pour deduplication
+        $redditBloque = false; // Si Reddit renvoie 403/HTML, on skip les passes suivantes
 
         // --- Passe 1 : Reddit JSON public, periode demandee ---
         $this->journaliserCollecte("Passe 1 : Reddit JSON public, periode={$periode}");
@@ -182,8 +183,14 @@ class CollecteurReddit
         $this->journaliserCollecte("Passe 1 : " . count($pubs1) . " resultats");
         $this->notifierProgression(count($publicationsMap));
 
+        // Detecter si Reddit bloque les requetes (0 resultats = probablement 403/bloque)
+        if (empty($pubs1)) {
+            $redditBloque = true;
+            $this->journaliserCollecte("Reddit semble bloquer les requetes depuis ce serveur, bascule vers DuckDuckGo", 'warning');
+        }
+
         // --- Passe 2 : si peu de resultats et periode restrictive, elargir a t=all ---
-        if (count($publicationsMap) < $limite && $periode !== 'all') {
+        if (!$redditBloque && count($publicationsMap) < $limite && $periode !== 'all') {
             $this->journaliserCollecte("Passe 2 : Reddit JSON public, periode=all (elargissement)");
             $pubs2 = $this->rechercherViaJsonPublic($marque, 'all', $limite, $subreddits, $motsCles);
             $nouveaux = 0;
@@ -199,7 +206,7 @@ class CollecteurReddit
         }
 
         // --- Passe 3 : variantes de requete (tri par new, top, comments) ---
-        if (count($publicationsMap) < $limite) {
+        if (!$redditBloque && count($publicationsMap) < $limite) {
             foreach (['new', 'top', 'comments'] as $tri) {
                 if (count($publicationsMap) >= $limite) {
                     break;
@@ -219,9 +226,9 @@ class CollecteurReddit
             }
         }
 
-        // --- Passe 4 : DuckDuckGo pour les resultats indexes mais pas dans Reddit search ---
+        // --- DuckDuckGo : complement ou source principale si Reddit bloque ---
         if (count($publicationsMap) < $limite) {
-            $this->journaliserCollecte("Passe 4 : DuckDuckGo site:reddit.com");
+            $this->journaliserCollecte("DuckDuckGo site:reddit.com" . ($redditBloque ? " (source principale)" : " (complement)"));
             $pubsDdg = $this->rechercherViaDdg($marque, $periode, $limite - count($publicationsMap), $subreddits, $motsCles);
             $nouveaux = 0;
             foreach ($pubsDdg as $pub) {
@@ -231,7 +238,7 @@ class CollecteurReddit
                     $nouveaux++;
                 }
             }
-            $this->journaliserCollecte("Passe 4 (DuckDuckGo) : {$nouveaux} nouveaux resultats");
+            $this->journaliserCollecte("DuckDuckGo : {$nouveaux} nouveaux resultats");
             $this->notifierProgression(count($publicationsMap));
         }
 
