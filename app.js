@@ -662,13 +662,14 @@ function demarrerSuiviProgression(jobId, analyseId) {
                 }
                 if (kpiPourcent) kpiPourcent.textContent = '100 %';
                 if (statusMsg) {
+                    const urlResultats = BASE_URL + '/resultats.php?analyse_id=' + (prog.analyse_id || analyseId);
                     statusMsg.className = 'status-msg mb-4 status-success';
-                    statusMsg.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> Analyse terminee ! Redirection vers les resultats...';
+                    statusMsg.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> Analyse terminee ! '
+                        + '<a href="' + urlResultats + '" class="btn btn-sm btn-success ms-3"><i class="bi bi-arrow-right me-1"></i> Voir les resultats</a>';
                 }
 
-                setTimeout(() => {
-                    window.location.href = BASE_URL + '/resultats.php?analyse_id=' + (prog.analyse_id || analyseId);
-                }, 2500);
+                // Reactiver la navigation
+                document.querySelectorAll('#navigationPrincipale .nav-link').forEach(l => l.classList.remove('disabled'));
             }
 
             // Erreur
