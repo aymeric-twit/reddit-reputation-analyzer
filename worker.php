@@ -186,13 +186,16 @@ try {
     }
 
     $collecteur = new CollecteurReddit();
+    $collecteur->definirRappelJournal(function (string $message, string $niveau = 'info') use ($dossierJob): void {
+        journaliser($dossierJob, $message, $niveau);
+    });
     $collecteur->authentifier();
     $modeCollecte = $collecteur->obtenirMode();
 
     $labelMode = match ($modeCollecte) {
         'api'         => 'API OAuth2',
         'json_public' => 'JSON public (sans credentials)',
-        'bing'        => 'Recherche Bing site:reddit.com',
+        'ddg'         => 'Recherche DuckDuckGo site:reddit.com',
         default       => $modeCollecte,
     };
     mettreAJourProgression($dossierJob, 8, 'Connexion a Reddit...', "Mode : {$labelMode}");
@@ -230,6 +233,19 @@ try {
     }
     $publications = array_values($publicationsUniques);
     $nbApres = count($publications);
+    // Le mode peut avoir change (fallback JSON public → DuckDuckGo)
+    $modeCollecteEffectif = $collecteur->obtenirMode();
+    if ($modeCollecteEffectif !== $modeCollecte) {
+        $labelModeEffectif = match ($modeCollecteEffectif) {
+            'api'         => 'API OAuth2',
+            'json_public' => 'JSON public (sans credentials)',
+            'ddg'         => 'Recherche DuckDuckGo site:reddit.com',
+            default       => $modeCollecteEffectif,
+        };
+        journaliser($dossierJob, "Mode effectif apres fallback : {$labelModeEffectif}", 'warning');
+        $modeCollecte = $modeCollecteEffectif;
+    }
+
     journaliser($dossierJob, "{$nbApres} publications collectees" . ($nbAvantDedoublonnage > $nbApres ? " ({$nbAvantDedoublonnage} avant dedoublonnage)" : ''), 'success');
 
     if ($nbApres === 0) {
@@ -255,8 +271,8 @@ try {
     // Trier par score et prendre les top publications pour les commentaires
     usort($publications, fn(array $a, array $b): int => ($b['score'] ?? 0) <=> ($a['score'] ?? 0));
     $nbTopPubs = min(20, count($publications)); // Limiter pour eviter trop de requetes
-    if ($modeCollecte === 'bing') {
-        $nbTopPubs = min(10, count($publications)); // Encore moins en mode Bing
+    if ($modeCollecte === 'ddg') {
+        $nbTopPubs = min(10, count($publications)); // Encore moins en mode DDG
     }
     $publicationsTop = array_slice($publications, 0, $nbTopPubs);
     $commentaires = [];

@@ -8,7 +8,7 @@ declare(strict_types=1);
  * Trois modes de collecte :
  * 1. API OAuth2 (si credentials disponibles)
  * 2. Reddit JSON public (sans auth, 10 req/min)
- * 3. Bing site:reddit.com (fallback, scraping des résultats)
+ * 3. DuckDuckGo site:reddit.com (fallback, scraping des resultats)
  *
  * Le mode est selectionne automatiquement selon les credentials disponibles.
  */
@@ -25,10 +25,13 @@ class CollecteurReddit
     private const string URL_AUTHENTIFICATION = 'https://www.reddit.com/api/v1/access_token';
     private const string URL_API = 'https://oauth.reddit.com';
     private const string URL_REDDIT_PUBLIC = 'https://www.reddit.com';
-    private const string URL_BING = 'https://www.bing.com/search';
+    private const string URL_DDG = 'https://html.duckduckgo.com/html/';
 
     /** @var callable|null Callback de progression */
     private $rappelProgression = null;
+
+    /** @var callable|null Callback de journalisation */
+    private $rappelJournal = null;
 
     /**
      * Constructeur : detecte automatiquement le mode disponible.
@@ -36,7 +39,7 @@ class CollecteurReddit
      * Modes :
      * - 'api' : credentials Reddit API disponibles
      * - 'json_public' : pas de credentials, utilise les endpoints .json publics
-     * - 'bing' : fallback via scraping Bing site:reddit.com
+     * - 'ddg' : fallback via scraping DuckDuckGo site:reddit.com
      */
     public function __construct(?string $modeSouhaite = null)
     {
@@ -72,7 +75,7 @@ class CollecteurReddit
     public function authentifier(): void
     {
         if ($this->mode !== 'api') {
-            return; // Pas necessaire en mode public ou Bing
+            return; // Pas necessaire en mode public ou DDG
         }
 
         $this->respecterRateLimit(1.0);
@@ -123,6 +126,14 @@ class CollecteurReddit
      * @param callable|null $rappelProgression Callback(int $nbCollectees)
      * @return array<int, array<string, mixed>>
      */
+    /**
+     * Definit le callback de journalisation pour le suivi diagnostic.
+     */
+    public function definirRappelJournal(?callable $rappel): void
+    {
+        $this->rappelJournal = $rappel;
+    }
+
     public function rechercherPublications(
         string $marque,
         string $periode = 'month',
@@ -133,12 +144,100 @@ class CollecteurReddit
     ): array {
         $this->rappelProgression = $rappelProgression;
 
-        return match ($this->mode) {
-            'api'         => $this->rechercherViaApi($marque, $periode, $limite, $subreddits, $motsCles),
-            'json_public' => $this->rechercherViaJsonPublic($marque, $periode, $limite, $subreddits, $motsCles),
-            'bing'        => $this->rechercherViaBing($marque, $periode, $limite, $subreddits, $motsCles),
-            default       => $this->rechercherViaJsonPublic($marque, $periode, $limite, $subreddits, $motsCles),
-        };
+        if ($this->mode === 'api') {
+            return $this->rechercherViaApi($marque, $periode, $limite, $subreddits, $motsCles);
+        }
+
+        // Mode sans credentials : strategie multi-sources pour maximiser les resultats
+        return $this->rechercherMultiSources($marque, $periode, $limite, $subreddits, $motsCles);
+    }
+
+    /**
+     * Strategie de collecte multi-sources (JSON public + DuckDuckGo).
+     *
+     * 1. Reddit JSON public avec la periode demandee (limit=100)
+     * 2. Si peu de resultats, elargir a t=all
+     * 3. Essayer aussi avec des variantes de requete (sans guillemets)
+     * 4. Completer avec DuckDuckGo pour les resultats indexes par Google
+     * 5. Fusionner et dedoublonner par reddit_id
+     */
+    private function rechercherMultiSources(
+        string $marque,
+        string $periode,
+        int $limite,
+        array $subreddits,
+        array $motsCles,
+    ): array {
+        $publicationsMap = []; // Indexees par reddit_id pour deduplication
+
+        // --- Passe 1 : Reddit JSON public, periode demandee ---
+        $this->journaliserCollecte("Passe 1 : Reddit JSON public, periode={$periode}");
+        $pubs1 = $this->rechercherViaJsonPublic($marque, $periode, $limite, $subreddits, $motsCles);
+        foreach ($pubs1 as $pub) {
+            $rid = $pub['reddit_id'] ?? '';
+            if ($rid !== '') {
+                $publicationsMap[$rid] = $pub;
+            }
+        }
+        $this->journaliserCollecte("Passe 1 : " . count($pubs1) . " resultats");
+        $this->notifierProgression(count($publicationsMap));
+
+        // --- Passe 2 : si peu de resultats et periode restrictive, elargir a t=all ---
+        if (count($publicationsMap) < $limite && $periode !== 'all') {
+            $this->journaliserCollecte("Passe 2 : Reddit JSON public, periode=all (elargissement)");
+            $pubs2 = $this->rechercherViaJsonPublic($marque, 'all', $limite, $subreddits, $motsCles);
+            $nouveaux = 0;
+            foreach ($pubs2 as $pub) {
+                $rid = $pub['reddit_id'] ?? '';
+                if ($rid !== '' && !isset($publicationsMap[$rid])) {
+                    $publicationsMap[$rid] = $pub;
+                    $nouveaux++;
+                }
+            }
+            $this->journaliserCollecte("Passe 2 : {$nouveaux} nouveaux resultats");
+            $this->notifierProgression(count($publicationsMap));
+        }
+
+        // --- Passe 3 : variantes de requete (tri par new, top, comments) ---
+        if (count($publicationsMap) < $limite) {
+            foreach (['new', 'top', 'comments'] as $tri) {
+                if (count($publicationsMap) >= $limite) {
+                    break;
+                }
+                $this->journaliserCollecte("Passe 3 : Reddit JSON public, sort={$tri}, t=all");
+                $pubs3 = $this->rechercherViaJsonPublicAvecTri($marque, 'all', $limite, $subreddits, $motsCles, $tri);
+                $nouveaux = 0;
+                foreach ($pubs3 as $pub) {
+                    $rid = $pub['reddit_id'] ?? '';
+                    if ($rid !== '' && !isset($publicationsMap[$rid])) {
+                        $publicationsMap[$rid] = $pub;
+                        $nouveaux++;
+                    }
+                }
+                $this->journaliserCollecte("Passe 3 ({$tri}) : {$nouveaux} nouveaux resultats");
+                $this->notifierProgression(count($publicationsMap));
+            }
+        }
+
+        // --- Passe 4 : DuckDuckGo pour les resultats indexes mais pas dans Reddit search ---
+        if (count($publicationsMap) < $limite) {
+            $this->journaliserCollecte("Passe 4 : DuckDuckGo site:reddit.com");
+            $pubsDdg = $this->rechercherViaDdg($marque, $periode, $limite - count($publicationsMap), $subreddits, $motsCles);
+            $nouveaux = 0;
+            foreach ($pubsDdg as $pub) {
+                $rid = $pub['reddit_id'] ?? '';
+                if ($rid !== '' && !isset($publicationsMap[$rid])) {
+                    $publicationsMap[$rid] = $pub;
+                    $nouveaux++;
+                }
+            }
+            $this->journaliserCollecte("Passe 4 (DuckDuckGo) : {$nouveaux} nouveaux resultats");
+            $this->notifierProgression(count($publicationsMap));
+        }
+
+        $this->journaliserCollecte("Total apres fusion : " . count($publicationsMap) . " publications uniques", 'success');
+
+        return array_values($publicationsMap);
     }
 
     /**
@@ -298,22 +397,40 @@ class CollecteurReddit
        MODE 2 : Reddit JSON public (sans auth)
        ======================================================================== */
 
+    /**
+     * Recherche via Reddit JSON public avec pagination.
+     */
     private function rechercherViaJsonPublic(
         string $marque,
         string $periode,
         int $limite,
         array $subreddits,
         array $motsCles,
+        string $tri = 'relevance',
+    ): array {
+        return $this->rechercherViaJsonPublicAvecTri($marque, $periode, $limite, $subreddits, $motsCles, $tri);
+    }
+
+    /**
+     * Recherche JSON public avec tri configurable et pagination.
+     */
+    private function rechercherViaJsonPublicAvecTri(
+        string $marque,
+        string $periode,
+        int $limite,
+        array $subreddits,
+        array $motsCles,
+        string $tri = 'relevance',
     ): array {
         $publications = [];
         $apres = null;
         $requete = $this->construireRequete($marque, $motsCles);
-        $parPage = min($limite, 25); // JSON public limite a 25 par page plus souvent
+        $parPage = min($limite, 100); // Reddit supporte limit=100 en JSON public
 
         while (count($publications) < $limite) {
             $params = [
                 'q'        => $requete,
-                'sort'     => 'relevance',
+                'sort'     => $tri,
                 't'        => $periode,
                 'limit'    => $parPage,
                 'type'     => 'link',
@@ -334,12 +451,6 @@ class CollecteurReddit
             $reponse = $this->requeteJsonPublic($endpoint, $params);
 
             if ($reponse === null) {
-                // JSON public echoue, basculer vers Bing
-                if ($this->mode === 'json_public') {
-                    $this->mode = 'bing';
-                    $pubsBing = $this->rechercherViaBing($marque, $periode, $limite - count($publications), $subreddits, $motsCles);
-                    return array_merge($publications, $pubsBing);
-                }
                 break;
             }
 
@@ -350,7 +461,6 @@ class CollecteurReddit
 
             foreach ($enfants as $enfant) {
                 $publications[] = $this->formaterPublication($enfant['data'] ?? []);
-                $this->notifierProgression(count($publications));
                 if (count($publications) >= $limite) {
                     break;
                 }
@@ -367,13 +477,15 @@ class CollecteurReddit
 
     private function requeteJsonPublic(string $endpoint, array $params = []): ?array
     {
-        // Rate limit plus conservateur pour le mode public : 6 req/min
+        // Rate limit pour le mode public (~6 req/min)
         $this->respecterRateLimit(10.0);
 
         $url = self::URL_REDDIT_PUBLIC . $endpoint;
         if (!empty($params)) {
             $url .= '?' . http_build_query($params);
         }
+
+        $this->journaliserCollecte("Requete JSON public : {$url}");
 
         $contexte = stream_context_create([
             'http' => [
@@ -390,19 +502,36 @@ class CollecteurReddit
         $reponse = @file_get_contents($url, false, $contexte);
         $this->derniereRequete = microtime(true);
 
+        // Extraire le code HTTP depuis les headers de reponse
+        $codeHttp = 0;
+        if (isset($http_response_header) && is_array($http_response_header)) {
+            foreach ($http_response_header as $header) {
+                if (preg_match('#^HTTP/\S+\s+(\d{3})#', $header, $m)) {
+                    $codeHttp = (int) $m[1];
+                }
+            }
+        }
+
         if ($reponse === false) {
+            $this->journaliserCollecte("Requete echouee (pas de reponse, HTTP {$codeHttp})", 'warning');
             return null;
         }
 
         // Verifier si on a ete bloque (429, 403, page HTML au lieu de JSON)
         if (str_starts_with(trim($reponse), '<') || str_starts_with(trim($reponse), '<!')) {
+            $this->journaliserCollecte("Reddit a renvoye du HTML (HTTP {$codeHttp}) — probablement bloque", 'warning');
             return null;
         }
 
         $donnees = json_decode($reponse, true, 512);
         if ($donnees === null || isset($donnees['error'])) {
+            $erreur = $donnees['error'] ?? 'JSON invalide';
+            $this->journaliserCollecte("Reponse invalide (HTTP {$codeHttp}) : {$erreur}", 'warning');
             return null;
         }
+
+        $nbResultats = count($donnees['data']['children'] ?? []);
+        $this->journaliserCollecte("HTTP {$codeHttp} — {$nbResultats} resultats");
 
         return $donnees;
     }
@@ -429,10 +558,10 @@ class CollecteurReddit
     }
 
     /* ========================================================================
-       MODE 3 : Bing site:reddit.com (fallback)
+       MODE 3 : DuckDuckGo site:reddit.com (fallback)
        ======================================================================== */
 
-    private function rechercherViaBing(
+    private function rechercherViaDdg(
         string $marque,
         string $periode,
         int $limite,
@@ -440,95 +569,199 @@ class CollecteurReddit
         array $motsCles,
     ): array {
         $publications = [];
-        $requete = $this->construireRequeteBing($marque, $subreddits, $motsCles);
-        $offset = 0;
-        $parPage = 10; // Bing renvoie ~10 resultats par page
+        $requete = $this->construireRequeteDdg($marque, $subreddits, $motsCles);
+        $this->journaliserCollecte("Recherche DuckDuckGo : {$requete}");
 
-        while (count($publications) < $limite && $offset < 100) {
-            // Bing ne permet pas facilement plus de ~100 resultats
-            $urlsBing = $this->scraperBing($requete, $offset);
+        // Recuperer toutes les URLs avec pagination DDG (max 3 pages)
+        $urlsDdg = $this->scraperDuckDuckGoAvecPagination($requete, 3);
+        $this->journaliserCollecte(count($urlsDdg) . " URLs Reddit trouvees via DuckDuckGo");
 
-            if (empty($urlsBing)) {
+        foreach ($urlsDdg as $urlReddit) {
+            if (count($publications) >= $limite) {
                 break;
             }
 
-            foreach ($urlsBing as $urlReddit) {
-                if (count($publications) >= $limite) {
-                    break;
-                }
-
-                // Extraire les donnees du post Reddit via JSON public
-                $pub = $this->extrairePostDepuisUrl($urlReddit);
-                if ($pub !== null) {
-                    $publications[] = $pub;
-                    $this->notifierProgression(count($publications));
-                }
+            $pub = $this->extrairePostDepuisUrl($urlReddit);
+            if ($pub !== null) {
+                $publications[] = $pub;
+                $this->notifierProgression(count($publications));
+                $this->journaliserCollecte("  Collecte OK : " . mb_substr($pub['titre'] ?? '', 0, 60));
+            } else {
+                $this->journaliserCollecte("  Echec extraction : {$urlReddit}", 'warning');
             }
-
-            $offset += $parPage;
         }
+
+        $this->journaliserCollecte("DuckDuckGo : " . count($publications) . " publications collectees au total", 'success');
 
         return $publications;
     }
 
     /**
-     * Scrape les resultats Bing pour obtenir des URLs Reddit.
+     * Scrape DuckDuckGo HTML avec pagination automatique.
      *
-     * @return array<string> URLs Reddit trouvees
+     * Page 1 = GET, pages suivantes = POST avec les champs caches du formulaire "Next".
+     *
+     * @param string $requete    Requete de recherche
+     * @param int    $maxPages   Nombre max de pages a scraper
+     * @return array<string> URLs Reddit uniques trouvees
      */
-    private function scraperBing(string $requete, int $offset = 0): array
+    private function scraperDuckDuckGoAvecPagination(string $requete, int $maxPages = 3): array
     {
+        $toutesUrls = [];
+
+        // --- Page 1 : GET ---
         $this->respecterRateLimit(3.0);
+        $url = self::URL_DDG . '?' . http_build_query(['q' => $requete]);
 
-        $params = [
-            'q'     => $requete,
-            'first' => $offset + 1,
-            'count' => 10,
-        ];
-
-        $url = self::URL_BING . '?' . http_build_query($params);
-
-        $contexte = stream_context_create([
-            'http' => [
-                'method'  => 'GET',
-                'header'  => implode("\r\n", [
-                    "User-Agent: {$this->userAgent}",
-                    'Accept: text/html,application/xhtml+xml',
-                    'Accept-Language: en-US,en;q=0.9,fr;q=0.8',
-                ]),
-                'timeout' => 30,
-                'ignore_errors' => true,
-            ],
-        ]);
-
-        $html = @file_get_contents($url, false, $contexte);
-        $this->derniereRequete = microtime(true);
-
-        if ($html === false) {
+        $html = $this->requeteHttp($url, 'GET');
+        if ($html === null) {
+            $this->journaliserCollecte("DuckDuckGo : pas de reponse page 1", 'warning');
             return [];
         }
 
-        // Extraire les URLs reddit.com des resultats Bing
-        $urls = [];
-        // Pattern pour les liens dans les resultats Bing
-        if (preg_match_all('#href="(https?://(?:www\.)?reddit\.com/r/[^"]+/comments/[^"]+)"#i', $html, $matches)) {
-            $urls = array_unique($matches[1]);
+        $urls = $this->extraireUrlsRedditDdg($html);
+        $toutesUrls = array_merge($toutesUrls, $urls);
+        $this->journaliserCollecte("DuckDuckGo page 1 : " . count($urls) . " URLs Reddit");
+
+        // --- Pages suivantes : POST avec les champs du formulaire "Next" ---
+        for ($page = 2; $page <= $maxPages; $page++) {
+            $formData = $this->extraireFormulaireSuivantDdg($html);
+            if ($formData === null) {
+                break; // Plus de pagination
+            }
+
+            $this->respecterRateLimit(4.0); // Un peu plus lent pour eviter le rate limit
+            $html = $this->requeteHttp(self::URL_DDG, 'POST', $formData);
+            if ($html === null) {
+                $this->journaliserCollecte("DuckDuckGo : page {$page} echouee (rate limit probable)", 'warning');
+                break;
+            }
+
+            $urls = $this->extraireUrlsRedditDdg($html);
+            if (empty($urls)) {
+                break;
+            }
+            $toutesUrls = array_merge($toutesUrls, $urls);
+            $this->journaliserCollecte("DuckDuckGo page {$page} : " . count($urls) . " URLs Reddit");
         }
 
-        // Pattern alternatif dans les attributs cite
-        if (empty($urls) && preg_match_all('#<cite[^>]*>(https?://(?:www\.)?reddit\.com/r/\w+/comments/\w+[^<]*)</cite>#i', $html, $matches)) {
-            foreach ($matches[1] as $urlCite) {
-                $urlCite = strip_tags($urlCite);
-                $urlCite = html_entity_decode($urlCite, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-                // Nettoyer et normaliser
-                if (str_contains($urlCite, 'reddit.com/r/') && str_contains($urlCite, '/comments/')) {
-                    $urls[] = 'https://www.reddit.com' . parse_url($urlCite, PHP_URL_PATH);
+        return array_values(array_unique($toutesUrls));
+    }
+
+    /**
+     * Extrait les URLs Reddit des resultats DuckDuckGo HTML.
+     *
+     * @return array<string>
+     */
+    private function extraireUrlsRedditDdg(string $html): array
+    {
+        $urls = [];
+
+        // Pattern 1 : liens avec redirect uddg=
+        if (preg_match_all('#href="[^"]*uddg=([^&"]+)[^"]*"#i', $html, $matches)) {
+            foreach ($matches[1] as $urlEncodee) {
+                $urlDecodee = urldecode($urlEncodee);
+                if (str_contains($urlDecodee, 'reddit.com/r/') && str_contains($urlDecodee, '/comments/')) {
+                    $urls[] = $urlDecodee;
                 }
             }
-            $urls = array_unique($urls);
         }
 
-        return array_values($urls);
+        // Pattern 2 : liens directs vers Reddit
+        if (empty($urls) && preg_match_all('#href="(https?://(?:www\.)?reddit\.com/r/[^"]+/comments/[^"]+)"#i', $html, $matches)) {
+            $urls = array_merge($urls, $matches[1]);
+        }
+
+        return array_values(array_unique($urls));
+    }
+
+    /**
+     * Extrait les champs caches du formulaire "Next" de DDG pour la pagination.
+     *
+     * @return array<string, string>|null Donnees POST ou null si pas de page suivante
+     */
+    private function extraireFormulaireSuivantDdg(string $html): ?array
+    {
+        // Trouver le formulaire contenant le bouton "Next"
+        if (!preg_match('#<form[^>]*class="[^"]*nav[^"]*"[^>]*>(.*?)</form>#si', $html, $formMatch)) {
+            // Essayer un pattern plus large : formulaire contenant input value="Next"
+            if (!preg_match('#<form[^>]*>((?:(?!</form>).)*value="Next"(?:(?!</form>).)*)</form>#si', $html, $formMatch)) {
+                return null;
+            }
+        }
+
+        $formHtml = $formMatch[1];
+        $donnees = [];
+
+        // Extraire tous les inputs caches
+        if (preg_match_all('#<input[^>]*name="([^"]*)"[^>]*value="([^"]*)"#i', $formHtml, $inputs)) {
+            for ($i = 0; $i < count($inputs[1]); $i++) {
+                $nom = $inputs[1][$i];
+                $valeur = $inputs[2][$i];
+                if ($nom !== '' && $nom !== 'b') { // 'b' est le bouton Next
+                    $donnees[$nom] = html_entity_decode($valeur, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                }
+            }
+        }
+
+        // Verifier que les donnees de pagination sont valides
+        if (!isset($donnees['q']) || !isset($donnees['s'])) {
+            return null;
+        }
+
+        // Si s=0 et dc=1, il n'y a plus de resultats
+        if (($donnees['s'] ?? '0') === '0' && ($donnees['dc'] ?? '1') === '1') {
+            return null;
+        }
+
+        return $donnees;
+    }
+
+    /**
+     * Effectue une requete HTTP (GET ou POST).
+     *
+     * @return string|null Corps de la reponse ou null en cas d'echec
+     */
+    private function requeteHttp(string $url, string $methode = 'GET', ?array $postData = null): ?string
+    {
+        $headers = [
+            "User-Agent: {$this->userAgent}",
+            'Accept: text/html,application/xhtml+xml',
+            'Accept-Language: en-US,en;q=0.9,fr;q=0.8',
+        ];
+
+        $options = [
+            'http' => [
+                'method'        => $methode,
+                'header'        => implode("\r\n", $headers),
+                'timeout'       => 30,
+                'ignore_errors' => true,
+            ],
+        ];
+
+        if ($methode === 'POST' && $postData !== null) {
+            $options['http']['header'] .= "\r\nContent-Type: application/x-www-form-urlencoded";
+            $options['http']['content'] = http_build_query($postData);
+        }
+
+        $contexte = stream_context_create($options);
+        $reponse = @file_get_contents($url, false, $contexte);
+        $this->derniereRequete = microtime(true);
+
+        if ($reponse === false) {
+            return null;
+        }
+
+        // Verifier si DDG renvoie un challenge bot (HTTP 202)
+        if (isset($http_response_header) && is_array($http_response_header)) {
+            foreach ($http_response_header as $header) {
+                if (preg_match('#^HTTP/\S+\s+202#', $header)) {
+                    return null; // Bot challenge, on arrete
+                }
+            }
+        }
+
+        return $reponse;
     }
 
     /**
@@ -542,7 +775,8 @@ class CollecteurReddit
         $urlNettoyee = rtrim(preg_replace('#\?.*$#', '', $url), '/');
         $urlJson = $urlNettoyee . '.json?raw_json=1&limit=0';
 
-        $this->respecterRateLimit(10.0);
+        // Rate limit modere pour les requetes individuelles de posts
+        $this->respecterRateLimit(5.0);
 
         $contexte = stream_context_create([
             'http' => [
@@ -598,9 +832,9 @@ class CollecteurReddit
     }
 
     /**
-     * Construit la requete Bing avec site:reddit.com
+     * Construit la requete DuckDuckGo avec site:reddit.com
      */
-    private function construireRequeteBing(string $marque, array $subreddits, array $motsCles): string
+    private function construireRequeteDdg(string $marque, array $subreddits, array $motsCles): string
     {
         $requete = 'site:reddit.com "' . $marque . '"';
 
@@ -720,6 +954,16 @@ class CollecteurReddit
     {
         if ($this->rappelProgression !== null) {
             ($this->rappelProgression)($nbCollectees);
+        }
+    }
+
+    /**
+     * Journalise un message diagnostic via le callback si defini.
+     */
+    private function journaliserCollecte(string $message, string $niveau = 'info'): void
+    {
+        if ($this->rappelJournal !== null) {
+            ($this->rappelJournal)($message, $niveau);
         }
     }
 }
