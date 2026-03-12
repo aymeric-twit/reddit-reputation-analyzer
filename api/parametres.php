@@ -38,6 +38,7 @@ try {
             'limite_defaut'        => '500',
             'subreddits_favoris'   => '',
             'seuil_alerte_score'   => '40',
+            'google_nlp_api_key'   => '',
         ];
 
         foreach ($parametresDefaut as $cle => $valeurDefaut) {
@@ -82,6 +83,7 @@ try {
             'limite_defaut',
             'subreddits_favoris',
             'seuil_alerte_score',
+            'google_nlp_api_key',
         ];
 
         $mises_a_jour = 0;

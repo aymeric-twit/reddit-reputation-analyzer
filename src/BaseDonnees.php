@@ -227,7 +227,7 @@ class BaseDonnees
             CREATE TABLE IF NOT EXISTS publications (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 analyse_id INTEGER NOT NULL,
-                reddit_id TEXT UNIQUE,
+                reddit_id TEXT,
                 titre TEXT,
                 contenu TEXT,
                 url TEXT,
@@ -309,5 +309,80 @@ class BaseDonnees
                 valeur TEXT
             )
         ');
+
+        // Index unique composite pour eviter les doublons par analyse
+        $this->pdo->exec('
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_publications_analyse_reddit
+            ON publications (analyse_id, reddit_id)
+        ');
+
+        // Migration : supprimer l'ancien index UNIQUE global sur reddit_id s'il existe
+        $this->migrerSchemaPublications();
+    }
+
+    /**
+     * Migre le schema si necessaire.
+     *
+     * 1. Supprime la contrainte UNIQUE globale sur publications.reddit_id
+     * 2. Repare les FK des tables qui referençaient publications_old
+     */
+    private function migrerSchemaPublications(): void
+    {
+        // Migration 1 : UNIQUE reddit_id → index composite
+        $schema = $this->pdo->query("SELECT sql FROM sqlite_master WHERE type='table' AND name='publications'")->fetchColumn();
+        if ($schema !== false && str_contains($schema, 'reddit_id TEXT UNIQUE')) {
+            $this->pdo->exec('PRAGMA foreign_keys = OFF');
+            $this->pdo->exec('BEGIN TRANSACTION');
+            $this->pdo->exec('ALTER TABLE publications RENAME TO publications_old');
+            $this->pdo->exec('
+                CREATE TABLE publications (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    analyse_id INTEGER NOT NULL,
+                    reddit_id TEXT,
+                    titre TEXT, contenu TEXT, url TEXT, subreddit TEXT, auteur TEXT,
+                    karma_auteur INTEGER, date_publication TEXT, score INTEGER,
+                    ratio_upvote REAL, nb_commentaires INTEGER, awards INTEGER DEFAULT 0,
+                    score_sentiment REAL, label_sentiment TEXT, score_engagement REAL,
+                    type TEXT DEFAULT \'post\', publication_parent_id INTEGER,
+                    FOREIGN KEY (analyse_id) REFERENCES analyses(id) ON DELETE CASCADE,
+                    FOREIGN KEY (publication_parent_id) REFERENCES publications(id) ON DELETE SET NULL
+                )
+            ');
+            $this->pdo->exec('INSERT INTO publications SELECT * FROM publications_old');
+            $this->pdo->exec('DROP TABLE publications_old');
+            $this->pdo->exec('
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_publications_analyse_reddit
+                ON publications (analyse_id, reddit_id)
+            ');
+            $this->pdo->exec('COMMIT');
+            $this->pdo->exec('PRAGMA foreign_keys = ON');
+        }
+
+        // Migration 2 : reparer les FK cassees par le RENAME (publications_old)
+        $this->reparerFkPublications('questions');
+    }
+
+    /**
+     * Repare une table dont les FK referençent publications_old au lieu de publications.
+     */
+    private function reparerFkPublications(string $table): void
+    {
+        $schema = $this->pdo->query("SELECT sql FROM sqlite_master WHERE type='table' AND name='{$table}'")->fetchColumn();
+        if ($schema === false || !str_contains($schema, 'publications_old')) {
+            return;
+        }
+
+        $schemaCorrige = str_replace('publications_old', 'publications', $schema);
+        // Supprimer les guillemets autour du nom de table
+        $schemaCorrige = str_replace('"publications"', 'publications', $schemaCorrige);
+
+        $this->pdo->exec('PRAGMA foreign_keys = OFF');
+        $this->pdo->exec('BEGIN TRANSACTION');
+        $this->pdo->exec("ALTER TABLE {$table} RENAME TO {$table}_old");
+        $this->pdo->exec($schemaCorrige);
+        $this->pdo->exec("INSERT INTO {$table} SELECT * FROM {$table}_old");
+        $this->pdo->exec("DROP TABLE {$table}_old");
+        $this->pdo->exec('COMMIT');
+        $this->pdo->exec('PRAGMA foreign_keys = ON');
     }
 }

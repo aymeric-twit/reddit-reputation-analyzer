@@ -5,7 +5,12 @@ declare(strict_types=1);
 /**
  * Point d'entree AJAX pour consulter la progression d'un job d'analyse.
  *
- * Retourne le contenu du fichier progress.json du job demande.
+ * Retourne le contenu du fichier progress.json du job demande,
+ * ainsi que les nouvelles lignes du journal (log.jsonl) depuis le dernier poll.
+ *
+ * Parametres GET :
+ *   - job_id : identifiant du job (requis)
+ *   - log_offset : nombre d'octets deja lus du log (optionnel, defaut 0)
  */
 
 require_once __DIR__ . '/boot.php';
@@ -26,7 +31,9 @@ try {
     // Securite : empecher la traversee de repertoires
     $jobId = basename($jobId);
 
-    $cheminProgression = __DIR__ . '/data/jobs/' . $jobId . '/progress.json';
+    $dossierJob = __DIR__ . '/data/jobs/' . $jobId;
+    $cheminProgression = $dossierJob . '/progress.json';
+    $cheminLog = $dossierJob . '/log.jsonl';
 
     if (!file_exists($cheminProgression)) {
         echo json_encode([
@@ -44,10 +51,45 @@ try {
         exit;
     }
 
-    // Valider que c'est du JSON valide avant de le renvoyer
-    json_decode($contenu, true, 512, JSON_THROW_ON_ERROR);
+    /** @var array<string, mixed> $progression */
+    $progression = json_decode($contenu, true, 512, JSON_THROW_ON_ERROR);
 
-    echo $contenu;
+    // Lecture incrementale du journal
+    $logOffset = max(0, (int) ($_GET['log_offset'] ?? 0));
+    $nouvellesLignes = [];
+    $nouveauOffset = $logOffset;
+
+    if (file_exists($cheminLog)) {
+        $tailleLog = filesize($cheminLog);
+
+        if ($tailleLog !== false && $tailleLog > $logOffset) {
+            $handle = fopen($cheminLog, 'r');
+            if ($handle !== false) {
+                fseek($handle, $logOffset);
+                $contenuLog = fread($handle, $tailleLog - $logOffset);
+                fclose($handle);
+
+                if ($contenuLog !== false && $contenuLog !== '') {
+                    $lignes = explode("\n", rtrim($contenuLog, "\n"));
+                    foreach ($lignes as $ligne) {
+                        if ($ligne === '') {
+                            continue;
+                        }
+                        $decodee = json_decode($ligne, true);
+                        if (is_array($decodee)) {
+                            $nouvellesLignes[] = $decodee;
+                        }
+                    }
+                    $nouveauOffset = $tailleLog;
+                }
+            }
+        }
+    }
+
+    $progression['log'] = $nouvellesLignes;
+    $progression['log_offset'] = $nouveauOffset;
+
+    echo json_encode($progression, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
 
 } catch (JsonException $e) {
     http_response_code(500);

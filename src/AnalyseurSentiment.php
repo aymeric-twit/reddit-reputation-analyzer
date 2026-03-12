@@ -3,10 +3,12 @@
 declare(strict_types=1);
 
 /**
- * Analyseur de sentiment base sur un lexique (approche VADER).
+ * Analyseur de sentiment hybride : Google Cloud Natural Language API
+ * avec fallback sur un lexique local (approche VADER).
  *
- * Charge des lexiques bilingues (EN/FR) et calcule un score de sentiment
- * pour chaque texte en tenant compte de la negation et de l'amplification.
+ * Si la cle GOOGLE_NLP_API_KEY est configuree, utilise l'API Google
+ * pour une analyse ML multi-langue. Sinon, utilise le lexique bilingue
+ * EN/FR avec gestion de la negation et de l'amplification.
  */
 class AnalyseurSentiment
 {
@@ -19,13 +21,29 @@ class AnalyseurSentiment
     /** @var array<string> Liste des mots amplificateurs */
     private readonly array $amplificateurs;
 
+    /** @var string|null Cle API Google NLP */
+    private readonly ?string $cleApiGoogle;
+
+    /** @var string Mode actif : 'google_nlp' ou 'lexique' */
+    private string $mode;
+
+    /** @var int Compteur d'appels API Google (pour les stats) */
+    private int $compteurAppelsApi = 0;
+
+    /** @var int Compteur d'erreurs API consecutives */
+    private int $erreursConsecutives = 0;
+
+    private const string URL_API_GOOGLE = 'https://language.googleapis.com/v1/documents:analyzeSentiment';
+    private const int MAX_ERREURS_CONSECUTIVES = 3;
+    private const int MAX_TAILLE_TEXTE_API = 5000;
+
     private const float SEUIL_POSITIF = 0.05;
     private const float SEUIL_NEGATIF = -0.05;
     private const float FACTEUR_NEGATION = -0.75;
     private const float FACTEUR_AMPLIFICATION = 1.5;
 
     /**
-     * Constructeur : charge le lexique selon la langue.
+     * Constructeur : detecte le mode (Google NLP ou lexique).
      *
      * @param string $langue Langue du lexique ('en' ou 'fr', defaut 'en')
      */
@@ -50,7 +68,33 @@ class AnalyseurSentiment
             'très', 'vraiment', 'extrêmement', 'absolument',
         ];
 
+        // Detecter la cle API Google NLP
+        $this->cleApiGoogle = $this->detecterCleApi();
+
+        if ($this->cleApiGoogle !== null) {
+            $this->mode = 'google_nlp';
+        } else {
+            $this->mode = 'lexique';
+        }
+
+        // Toujours charger le lexique (fallback)
         $this->chargerLexique($langue);
+    }
+
+    /**
+     * Retourne le mode d'analyse actif.
+     */
+    public function obtenirMode(): string
+    {
+        return $this->mode;
+    }
+
+    /**
+     * Retourne le nombre d'appels API Google effectues.
+     */
+    public function obtenirCompteurAppelsApi(): int
+    {
+        return $this->compteurAppelsApi;
     }
 
     /**
@@ -60,27 +104,14 @@ class AnalyseurSentiment
      */
     public function analyser(string $texte): array
     {
-        $tokens = $this->tokeniser($texte);
-        $score = $this->calculerScore($tokens);
+        if ($this->mode === 'google_nlp' && $this->erreursConsecutives < self::MAX_ERREURS_CONSECUTIVES) {
+            $resultat = $this->analyserAvecGoogle($texte);
+            if ($resultat !== null) {
+                return $resultat;
+            }
+        }
 
-        // Clamp le score entre -1 et 1
-        $score = max(-1.0, min(1.0, $score));
-
-        $label = match (true) {
-            $score > self::SEUIL_POSITIF => 'positif',
-            $score < self::SEUIL_NEGATIF => 'negatif',
-            default                      => 'neutre',
-        };
-
-        return [
-            'score'   => round($score, 4),
-            'label'   => $label,
-            'details' => [
-                'nb_tokens'       => count($tokens),
-                'tokens_trouves'  => $this->compterTokensLexique($tokens),
-                'texte_original'  => mb_substr($texte, 0, 200),
-            ],
-        ];
+        return $this->analyserAvecLexique($texte);
     }
 
     /**
@@ -98,6 +129,158 @@ class AnalyseurSentiment
         }
 
         return $resultats;
+    }
+
+    /**
+     * Analyse le sentiment via Google Cloud Natural Language API.
+     *
+     * @return array{score: float, label: string, details: array<string, mixed>}|null
+     */
+    private function analyserAvecGoogle(string $texte): ?array
+    {
+        $texteNettoye = strip_tags($texte);
+        $texteNettoye = preg_replace('#https?://\S+#', '', $texteNettoye) ?? $texteNettoye;
+        $texteNettoye = trim($texteNettoye);
+
+        if (mb_strlen($texteNettoye) < 3) {
+            return $this->analyserAvecLexique($texte);
+        }
+
+        // Tronquer les textes trop longs pour l'API
+        if (mb_strlen($texteNettoye) > self::MAX_TAILLE_TEXTE_API) {
+            $texteNettoye = mb_substr($texteNettoye, 0, self::MAX_TAILLE_TEXTE_API);
+        }
+
+        $url = self::URL_API_GOOGLE . '?key=' . urlencode($this->cleApiGoogle);
+
+        $corpsRequete = json_encode([
+            'document' => [
+                'type'    => 'PLAIN_TEXT',
+                'content' => $texteNettoye,
+            ],
+            'encodingType' => 'UTF8',
+        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+
+        $contexte = stream_context_create([
+            'http' => [
+                'method'  => 'POST',
+                'header'  => "Content-Type: application/json\r\n",
+                'content' => $corpsRequete,
+                'timeout' => 10,
+                'ignore_errors' => true,
+            ],
+        ]);
+
+        $reponse = @file_get_contents($url, false, $contexte);
+
+        if ($reponse === false) {
+            $this->erreursConsecutives++;
+            return null;
+        }
+
+        $donnees = json_decode($reponse, true);
+
+        // Verifier les erreurs API
+        if (isset($donnees['error'])) {
+            $this->erreursConsecutives++;
+            error_log('Google NLP API erreur : ' . ($donnees['error']['message'] ?? 'Erreur inconnue'));
+            return null;
+        }
+
+        if (!isset($donnees['documentSentiment'])) {
+            $this->erreursConsecutives++;
+            return null;
+        }
+
+        $this->erreursConsecutives = 0;
+        $this->compteurAppelsApi++;
+
+        $scoreGoogle = (float) ($donnees['documentSentiment']['score'] ?? 0.0);
+        $magnitude = (float) ($donnees['documentSentiment']['magnitude'] ?? 0.0);
+
+        // Google retourne un score entre -1 et 1, compatible avec notre format
+        $label = match (true) {
+            $scoreGoogle > self::SEUIL_POSITIF => 'positif',
+            $scoreGoogle < self::SEUIL_NEGATIF => 'negatif',
+            default                            => 'neutre',
+        };
+
+        // Extraire les sentiments par phrase si disponibles
+        $phrasesDetail = [];
+        if (!empty($donnees['sentences'])) {
+            foreach (array_slice($donnees['sentences'], 0, 10) as $phrase) {
+                $phrasesDetail[] = [
+                    'texte' => mb_substr($phrase['text']['content'] ?? '', 0, 100),
+                    'score' => round((float) ($phrase['sentiment']['score'] ?? 0.0), 4),
+                    'magnitude' => round((float) ($phrase['sentiment']['magnitude'] ?? 0.0), 4),
+                ];
+            }
+        }
+
+        return [
+            'score'   => round($scoreGoogle, 4),
+            'label'   => $label,
+            'details' => [
+                'methode'          => 'google_nlp',
+                'magnitude'        => round($magnitude, 4),
+                'nb_phrases'       => count($donnees['sentences'] ?? []),
+                'phrases'          => $phrasesDetail,
+                'langue_detectee'  => $donnees['language'] ?? null,
+                'texte_original'   => mb_substr($texte, 0, 200),
+            ],
+        ];
+    }
+
+    /**
+     * Analyse le sentiment via le lexique local (VADER-like).
+     *
+     * @return array{score: float, label: string, details: array<string, mixed>}
+     */
+    private function analyserAvecLexique(string $texte): array
+    {
+        $tokens = $this->tokeniser($texte);
+        $score = $this->calculerScoreLexique($tokens);
+
+        // Clamp le score entre -1 et 1
+        $score = max(-1.0, min(1.0, $score));
+
+        $label = match (true) {
+            $score > self::SEUIL_POSITIF => 'positif',
+            $score < self::SEUIL_NEGATIF => 'negatif',
+            default                      => 'neutre',
+        };
+
+        return [
+            'score'   => round($score, 4),
+            'label'   => $label,
+            'details' => [
+                'methode'         => 'lexique',
+                'nb_tokens'       => count($tokens),
+                'tokens_trouves'  => $this->compterTokensLexique($tokens),
+                'texte_original'  => mb_substr($texte, 0, 200),
+            ],
+        ];
+    }
+
+    /**
+     * Detecte la cle API Google NLP depuis l'environnement ou la base de donnees.
+     */
+    private function detecterCleApi(): ?string
+    {
+        // Priorite 1 : variable d'environnement
+        $cle = $_ENV['GOOGLE_NLP_API_KEY'] ?? getenv('GOOGLE_NLP_API_KEY') ?: null;
+
+        // Priorite 2 : parametre en base de donnees
+        if ($cle === null || $cle === '') {
+            try {
+                $bd = BaseDonnees::instance();
+                $cle = $bd->obtenirParametre('google_nlp_api_key');
+            } catch (\Throwable) {
+                // Base pas encore initialisee
+            }
+        }
+
+        return ($cle !== null && $cle !== '') ? $cle : null;
     }
 
     /**
@@ -132,7 +315,7 @@ class AnalyseurSentiment
      * Gere la negation (inverse le score du mot suivant) et
      * l'amplification (augmente le score du mot suivant).
      */
-    private function calculerScore(array $tokens): float
+    private function calculerScoreLexique(array $tokens): float
     {
         $scoreTotal = 0.0;
         $nbMotsScores = 0;

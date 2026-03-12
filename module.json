@@ -9,7 +9,7 @@
     "quota_mode": "api_call",
     "default_quota": 500,
     "display_mode": "embedded",
-    "env_keys": ["REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET"],
+    "env_keys": ["REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET", "GOOGLE_NLP_API_KEY"],
     "api_doc_url": "https://www.reddit.com/dev/api/",
     "languages": [],
     "routes": [

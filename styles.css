@@ -1138,3 +1138,116 @@ a:hover {
         text-decoration: underline;
     }
 }
+
+/* --------------------------------------------------------------------------
+   14. Status Message + Journal d'execution + KPI Progression
+   -------------------------------------------------------------------------- */
+
+/* --- Status message --- */
+.status-msg {
+    padding: 0.6rem 1rem;
+    border-radius: 6px;
+    font-size: 0.88rem;
+    font-weight: 500;
+}
+
+.status-msg.status-loading {
+    background: var(--brand-teal-light);
+    color: var(--brand-dark);
+}
+
+.status-msg.status-success {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.status-msg.status-error {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.status-msg.status-warning {
+    background: var(--brand-gold-light);
+    color: #92400e;
+}
+
+/* --- Journal / Log --- */
+.journal-log {
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 0.78rem;
+    line-height: 1.55;
+    color: var(--text-primary);
+    background: #fafbfc;
+    padding: 0.75rem 1rem;
+    max-height: 300px;
+    min-height: 80px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.journal-log .log-time {
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+.journal-log .log-ok {
+    color: #16a34a;
+}
+
+.journal-log .log-warn {
+    color: #d97706;
+}
+
+.journal-log .log-error {
+    color: #dc2626;
+    font-weight: 600;
+}
+
+/* --- KPI Progression --- */
+.kpi-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 0.75rem;
+}
+
+.kpi-card {
+    background: #fff;
+    border-radius: 0.75rem;
+    border-left: 4px solid var(--brand-teal);
+    padding: 0.85rem 1rem;
+    box-shadow: 0 1px 4px rgba(0, 76, 76, 0.08);
+}
+
+.kpi-card.kpi-dark {
+    border-left-color: var(--brand-dark);
+}
+
+.kpi-card.kpi-gold {
+    border-left-color: var(--brand-gold);
+}
+
+.kpi-card.kpi-green {
+    border-left-color: #16a34a;
+}
+
+.kpi-card.kpi-red {
+    border-left-color: #dc2626;
+}
+
+.kpi-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1.2;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+}
+
+.kpi-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    margin-top: 0.15rem;
+}

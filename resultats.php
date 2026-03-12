@@ -158,8 +158,9 @@ $scoreReputation = $analyse['score_reputation'] !== null ? round((float)$analyse
             <div class="row g-3 mb-4">
                 <div class="col-md-5">
                     <div class="card h-100">
-                        <div class="card-header">
+                        <div class="card-header d-flex justify-content-between align-items-center">
                             <h6 class="mb-0 fw-bold">R&eacute;partition des sentiments</h6>
+                            <span id="badgeMethodeSentiment"></span>
                         </div>
                         <div class="card-body d-flex align-items-center justify-content-center">
                             <canvas id="graphiqueSentimentDonut" style="max-width:280px; max-height:280px;"></canvas>

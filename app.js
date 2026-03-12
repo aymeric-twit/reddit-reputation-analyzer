@@ -534,81 +534,164 @@ async function lancerAnalyse(donnees) {
  * @param {string} analyseId Identifiant de l'analyse
  */
 function demarrerSuiviProgression(jobId, analyseId) {
+    // Masquer TOUTES les vues
+    document.querySelectorAll('[id^="vue-"]').forEach(v => v.style.display = 'none');
+
+    // Afficher la zone de progression
     const zone = document.getElementById('zoneProgression');
     if (zone) {
-        zone.style.display = '';
+        zone.classList.remove('d-none');
     }
 
-    // Masquer le formulaire si present
-    const formulaire = document.getElementById('formulaireAnalyse');
-    if (formulaire) {
-        formulaire.closest('.card')?.classList.add('d-none');
-    }
+    // Desactiver les onglets de navigation
+    document.querySelectorAll('#navigationPrincipale .nav-link').forEach(l => {
+        l.classList.remove('active');
+        l.classList.add('disabled');
+    });
+
+    // Reinitialiser les elements
+    const livelog = document.getElementById('livelog');
+    if (livelog) livelog.textContent = '';
+    let nbLignesLog = 0;
 
     const barreProgression = document.getElementById('barreProgression');
+    const statusMsg = document.getElementById('statusMsg');
     const labelEtape = document.getElementById('etapeAnalyse');
-    const detailProgression = document.getElementById('detailsProgression');
+    const livelogCompteur = document.getElementById('livelog-compteur');
+    const kpiPosts = document.getElementById('kpiProgressPosts');
+    const kpiComments = document.getElementById('kpiProgressComments');
+    const kpiPourcent = document.getElementById('kpiProgressPourcent');
+    const kpiDuree = document.getElementById('kpiProgressDuree');
+    let logOffset = 0;
+    const tempsDebut = Date.now();
+
+    // Status initial
+    if (statusMsg) {
+        statusMsg.className = 'status-msg mb-4 status-loading';
+    }
+
+    // Toggle journal
+    const btnToggle = document.getElementById('btnToggleJournal');
+    const corpsJournal = document.getElementById('corpsJournal');
+    if (btnToggle && corpsJournal) {
+        btnToggle.onclick = () => {
+            const estCache = corpsJournal.style.display === 'none';
+            corpsJournal.style.display = estCache ? '' : 'none';
+            btnToggle.querySelector('i').className = estCache ? 'bi bi-chevron-up' : 'bi bi-chevron-down';
+        };
+    }
+
+    // Compteur duree
+    const intervalDuree = setInterval(() => {
+        if (kpiDuree) {
+            const sec = Math.floor((Date.now() - tempsDebut) / 1000);
+            kpiDuree.textContent = sec < 60 ? sec + 's' : Math.floor(sec / 60) + 'min ' + (sec % 60) + 's';
+        }
+    }, 1000);
 
     const intervalle = setInterval(async () => {
         try {
-            const prog = await appelerApi(`/progress.php?job_id=${jobId}`);
+            const prog = await appelerApi(`/progress.php?job_id=${jobId}&log_offset=${logOffset}`);
 
-            // Mise a jour de la barre de progression
+            // Barre de progression
             const pourcentage = prog.pourcentage || 0;
             if (barreProgression) {
                 barreProgression.style.width = `${pourcentage}%`;
                 barreProgression.setAttribute('aria-valuenow', pourcentage);
-                barreProgression.textContent = `${pourcentage}%`;
+            }
+            if (kpiPourcent) {
+                kpiPourcent.textContent = `${pourcentage} %`;
             }
 
-            // Mise a jour du label d'etape
+            // Etape
             if (labelEtape && prog.etape) {
                 labelEtape.textContent = prog.etape;
             }
 
-            // Mise a jour des details
-            if (detailProgression && prog.details) {
-                detailProgression.textContent = prog.details;
+            // Extraire les compteurs des details
+            if (prog.details) {
+                const matchPub = prog.details.match(/(\d+)\s*\/\s*\d+\s*publication/);
+                if (matchPub && kpiPosts) kpiPosts.textContent = matchPub[1];
+
+                const matchComm = prog.details.match(/(\d+)\s*\/\s*\d+\s*publications?\s*traitee/);
+                if (matchComm && kpiComments) kpiComments.textContent = matchComm[1];
             }
 
-            // Analyse terminee : redirection
+            // Nouvelles lignes de log
+            if (prog.log && prog.log.length > 0 && livelog) {
+                for (const ligne of prog.log) {
+                    const classeSpeciale = ligne.niveau === 'success' ? ' log-ok'
+                        : ligne.niveau === 'warning' ? ' log-warn'
+                        : ligne.niveau === 'error' ? ' log-error'
+                        : '';
+
+                    livelog.innerHTML += '<span class="log-time">[' + echapper(ligne.ts || '') + ']</span>'
+                        + '<span class="' + classeSpeciale + '"> ' + echapper(ligne.message || '') + '</span>\n';
+                }
+                nbLignesLog += prog.log.length;
+                livelog.scrollTop = livelog.scrollHeight;
+
+                if (livelogCompteur) {
+                    livelogCompteur.textContent = `${nbLignesLog} ligne${nbLignesLog > 1 ? 's' : ''}`;
+                }
+
+                // Mettre a jour les KPI depuis le log
+                for (const ligne of prog.log) {
+                    const msg = ligne.message || '';
+                    const matchPubLog = msg.match(/^(\d+) publications? collectees/);
+                    if (matchPubLog && kpiPosts) kpiPosts.textContent = matchPubLog[1];
+
+                    const matchCommLog = msg.match(/^(\d+) commentaires collectes/);
+                    if (matchCommLog && kpiComments) kpiComments.textContent = matchCommLog[1];
+                }
+            }
+
+            if (prog.log_offset !== undefined) {
+                logOffset = prog.log_offset;
+            }
+
+            // Termine
             if (prog.statut === 'termine') {
                 clearInterval(intervalle);
+                clearInterval(intervalDuree);
+
                 if (barreProgression) {
                     barreProgression.style.width = '100%';
-                    barreProgression.textContent = '100%';
-                    barreProgression.classList.remove('progress-bar-animated');
-                    barreProgression.classList.add('bg-success');
+                    barreProgression.classList.remove('progress-bar-animated', 'progress-bar-striped');
+                    barreProgression.style.backgroundColor = '#16a34a';
                 }
-                if (labelEtape) {
-                    labelEtape.textContent = 'Analyse terminee ! Redirection...';
+                if (kpiPourcent) kpiPourcent.textContent = '100 %';
+                if (statusMsg) {
+                    statusMsg.className = 'status-msg mb-4 status-success';
+                    statusMsg.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> Analyse terminee ! Redirection vers les resultats...';
                 }
+
                 setTimeout(() => {
-                    window.location.href = BASE_URL + '/resultats.php?analyse_id=' + analyseId;
-                }, 1000);
+                    window.location.href = BASE_URL + '/resultats.php?analyse_id=' + (prog.analyse_id || analyseId);
+                }, 2500);
             }
 
             // Erreur
             if (prog.statut === 'erreur') {
                 clearInterval(intervalle);
+                clearInterval(intervalDuree);
+
                 if (barreProgression) {
-                    barreProgression.classList.remove('progress-bar-animated');
-                    barreProgression.classList.add('bg-danger');
+                    barreProgression.classList.remove('progress-bar-animated', 'progress-bar-striped');
+                    barreProgression.style.backgroundColor = '#dc2626';
                 }
-                if (labelEtape) {
-                    labelEtape.textContent = 'Erreur lors de l\'analyse';
+                if (statusMsg) {
+                    statusMsg.className = 'status-msg mb-4 status-error';
+                    statusMsg.innerHTML = '<i class="bi bi-x-circle-fill me-1"></i> ' + echapper(prog.details || prog.message || 'Erreur lors de l\'analyse');
                 }
-                if (detailProgression) {
-                    detailProgression.textContent = prog.message || 'Une erreur est survenue.';
-                    detailProgression.classList.add('text-danger');
-                }
-                afficherToast(prog.message || 'Erreur lors de l\'analyse', 'danger');
+
+                // Reactiver la navigation
+                document.querySelectorAll('#navigationPrincipale .nav-link').forEach(l => l.classList.remove('disabled'));
             }
         } catch (erreur) {
-            // Erreur reseau : ne pas arreter le polling, simple log
             console.warn('Erreur lors du suivi de progression :', erreur.message);
         }
-    }, 2000);
+    }, 1500);
 }
 
 /* ==========================================================================
@@ -848,7 +931,8 @@ async function supprimerAnalyse(analyseId) {
 async function chargerParametres() {
     const formApi = document.getElementById('formulaireParametresApi');
     const formDefauts = document.getElementById('formulaireParametresDefaut');
-    if (!formApi && !formDefauts) return;
+    const formNlp = document.getElementById('formulaireParametresNlp');
+    if (!formApi && !formDefauts && !formNlp) return;
 
     try {
         const reponse = await appelerApi('/api/parametres.php');
@@ -859,12 +943,33 @@ async function chargerParametres() {
             remplirFormulaire(formApi, params);
         }
 
+        // Remplir les champs du formulaire NLP
+        if (formNlp) {
+            remplirFormulaire(formNlp, params);
+            mettreAJourIndicateurNlp(params);
+        }
+
         // Remplir les champs du formulaire par defaut
         if (formDefauts) {
             remplirFormulaire(formDefauts, params);
         }
     } catch (erreur) {
         console.warn('Impossible de charger les parametres :', erreur.message);
+    }
+}
+
+/**
+ * Met a jour l'indicateur de mode NLP (Google ou lexique).
+ */
+function mettreAJourIndicateurNlp(params) {
+    const indicateur = document.getElementById('nlpModeIndicateur');
+    if (!indicateur) return;
+
+    const cleConfiguree = !!(params.google_nlp_api_key);
+    if (cleConfiguree) {
+        indicateur.innerHTML = '<span class="badge bg-success"><i class="bi bi-cloud-check me-1"></i> Mode Google NLP actif</span>';
+    } else {
+        indicateur.innerHTML = '<span class="badge bg-secondary"><i class="bi bi-book me-1"></i> Mode lexique local (fallback)</span>';
     }
 }
 
@@ -894,7 +999,7 @@ function remplirFormulaire(formulaire, donnees) {
  * Initialise les formulaires de parametres.
  */
 function initFormulairesParametres() {
-    const formulaires = document.querySelectorAll('#formulaireParametresApi, #formulaireParametresDefaut');
+    const formulaires = document.querySelectorAll('#formulaireParametresApi, #formulaireParametresDefaut, #formulaireParametresNlp');
 
     formulaires.forEach(form => {
         if (!form) return;
@@ -910,12 +1015,18 @@ function initFormulairesParametres() {
 
             try {
                 const formData = new FormData(form);
+                const donnees = Object.fromEntries(formData.entries());
                 const reponse = await appelerApi('/api/parametres.php', {
                     method: 'POST',
-                    body: formData,
+                    body: JSON.stringify(donnees),
                 });
 
                 afficherToast(reponse.message || 'Parametres enregistres.', 'success');
+
+                // Mettre a jour l'indicateur NLP si on vient du formulaire NLP
+                if (form.id === 'formulaireParametresNlp') {
+                    mettreAJourIndicateurNlp(donnees);
+                }
             } catch (erreur) {
                 afficherToast('Erreur : ' + erreur.message, 'danger');
             } finally {
@@ -952,7 +1063,20 @@ function initResultats() {
  */
 async function chargerResultatsAnalyse(analyseId) {
     try {
-        const data = await appelerApi(`/api/resultats.php?analyse_id=${analyseId}`);
+        const reponseApi = await appelerApi(`/api/resultats.php?analyse_id=${analyseId}`);
+        const d = reponseApi.donnees || reponseApi;
+
+        // Mapper les donnees pour les renderers
+        const data = {
+            donnees: d,
+            sujets: d.sujets || [],
+            questions: d.questions || [],
+            discussions: d.publications || [],
+            facteurs: d.facteurs || {},
+            engagement: { auteurs: d.auteurs || [] },
+            geographie: [],
+            opportunites: {},
+        };
 
         renderSynthese(data);
         renderSujets(data);
@@ -984,51 +1108,124 @@ async function chargerResultatsAnalyse(analyseId) {
  * @param {object} data Donnees completes de l'analyse
  */
 function renderSynthese(data) {
-    const synthese = data.synthese || data;
-    const score = synthese.score || 0;
+    const d = data.donnees || data;
+    const analyse = d.analyse || {};
+    const stats = d.statistiques || {};
+    const score = analyse.score_reputation || 0;
     const info = formaterScore(score);
 
-    // Score principal
-    const elScore = document.getElementById('scorePrincipal');
+    // Score principal (KPI card ou gauge)
+    const elScore = document.getElementById('synthese-score');
     if (elScore) {
-        elScore.innerHTML = creerJaugeSvg(score, 160);
+        elScore.textContent = score;
+        elScore.style.color = info.couleur;
     }
 
-    const elLabelScore = document.getElementById('labelScore');
-    if (elLabelScore) {
-        elLabelScore.textContent = `Reputation ${info.label}`;
-        elLabelScore.className = `h5 ${info.classe}`;
+    const elGauge = document.getElementById('graphiqueGauge');
+    if (elGauge) {
+        renderGaugeScore(elGauge, score);
     }
 
-    // KPIs
-    const elVolume = document.getElementById('kpiVolume');
+    // KPIs de synthese
+    const elVolume = document.getElementById('synthese-volume');
     if (elVolume) {
-        elVolume.textContent = (synthese.volume || synthese.nombre_posts || 0).toLocaleString('fr-FR');
+        elVolume.textContent = (stats.total_publications || 0).toLocaleString('fr-FR');
+    }
+    const elVolumeDetail = document.getElementById('synthese-volume-detail');
+    if (elVolumeDetail) {
+        const nbComm = stats.total_commentaires || 0;
+        elVolumeDetail.textContent = `+ ${nbComm} commentaires`;
     }
 
-    const elSentiment = document.getElementById('kpiSentimentDominant');
+    const elSentiment = document.getElementById('synthese-sentiment');
     if (elSentiment) {
-        const sentimentDominant = synthese.sentiment_dominant || 'Neutre';
+        const dist = stats.distribution_sentiment || {};
+        const maxSentiment = Math.max(dist.positif || 0, dist.neutre || 0, dist.negatif || 0);
+        let sentimentDominant = 'Neutre';
+        if (maxSentiment > 0) {
+            if ((dist.positif || 0) === maxSentiment) sentimentDominant = 'Positif';
+            else if ((dist.negatif || 0) === maxSentiment) sentimentDominant = 'Negatif';
+        }
         elSentiment.textContent = sentimentDominant;
-        if (sentimentDominant.toLowerCase().includes('positif')) {
-            elSentiment.classList.add('text-success');
-        } else if (sentimentDominant.toLowerCase().includes('negatif') || sentimentDominant.toLowerCase().includes('négatif')) {
-            elSentiment.classList.add('text-danger');
+        elSentiment.className = 'fw-bold mt-2 mb-1 h2';
+        if (sentimentDominant === 'Positif') elSentiment.classList.add('text-success');
+        else if (sentimentDominant === 'Negatif') elSentiment.classList.add('text-danger');
+    }
+    const elSentimentDetail = document.getElementById('synthese-sentiment-detail');
+    if (elSentimentDetail) {
+        const dist = stats.distribution_sentiment || {};
+        elSentimentDetail.textContent = `${dist.positif || 0}+ / ${dist.neutre || 0}= / ${dist.negatif || 0}-`;
+    }
+
+    const elTopSub = document.getElementById('synthese-top-subreddit');
+    if (elTopSub) {
+        const topSubs = stats.top_subreddits || {};
+        const premierSub = Object.keys(topSubs)[0] || '—';
+        elTopSub.textContent = premierSub !== '—' ? 'r/' + premierSub : '—';
+    }
+    const elTopSubDetail = document.getElementById('synthese-top-subreddit-detail');
+    if (elTopSubDetail) {
+        const topSubs = stats.top_subreddits || {};
+        const nbSubs = Object.keys(topSubs).length;
+        elTopSubDetail.textContent = nbSubs > 1 ? `${nbSubs} subreddits actifs` : '';
+    }
+
+    // Badge methode de sentiment
+    const elMethodeSentiment = document.getElementById('badgeMethodeSentiment');
+    if (elMethodeSentiment) {
+        const methode = stats.methode_sentiment || null;
+        if (methode === 'google_nlp') {
+            elMethodeSentiment.innerHTML = '<span class="badge bg-success"><i class="bi bi-cloud-check me-1"></i> Google NLP</span>';
+        } else if (methode === 'lexique') {
+            elMethodeSentiment.innerHTML = '<span class="badge bg-secondary"><i class="bi bi-book me-1"></i> Lexique local</span>';
         }
     }
 
-    const elTopSubreddit = document.getElementById('kpiTopSubreddit');
-    if (elTopSubreddit) {
-        elTopSubreddit.textContent = synthese.top_subreddit || '—';
-    }
-
     // Graphique donut sentiment
-    renderGraphiqueSentiment(synthese.sentiments || synthese.repartition_sentiments);
+    renderGraphiqueSentiment(stats.distribution_sentiment);
+}
 
-    // Graphique temporel
-    if (synthese.evolution_temporelle || synthese.temporel) {
-        renderGraphiqueTemporel(synthese.evolution_temporelle || synthese.temporel);
-    }
+/**
+ * Dessine une jauge demi-circulaire pour le score dans un canvas.
+ */
+function renderGaugeScore(canvas, score) {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const w = canvas.width;
+    const h = canvas.height;
+    const cx = w / 2;
+    const cy = h - 10;
+    const r = Math.min(cx, cy) - 10;
+
+    ctx.clearRect(0, 0, w, h);
+
+    // Fond gris
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, Math.PI, 2 * Math.PI);
+    ctx.lineWidth = 12;
+    ctx.strokeStyle = '#e2e8f0';
+    ctx.stroke();
+
+    // Arc colore
+    const angle = Math.PI + (score / 100) * Math.PI;
+    const color = score >= 70 ? '#16a34a' : score >= 40 ? '#d97706' : '#dc2626';
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, Math.PI, angle);
+    ctx.lineWidth = 12;
+    ctx.strokeStyle = color;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    // Score texte
+    ctx.fillStyle = color;
+    ctx.font = 'bold 28px Poppins, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(Math.round(score).toString(), cx, cy - 10);
+
+    ctx.fillStyle = '#64748b';
+    ctx.font = '11px Poppins, sans-serif';
+    ctx.fillText('/100', cx, cy + 6);
 }
 
 /**

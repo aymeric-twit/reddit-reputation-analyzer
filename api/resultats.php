@@ -174,6 +174,8 @@ try {
                 'nb_sujets'         => count($sujets),
                 'nb_questions'      => count($questions),
                 'nb_auteurs'        => count($auteurs),
+                'methode_sentiment' => $statsGlobales['methode_sentiment'] ?? 'lexique',
+                'appels_api_nlp'    => $statsGlobales['appels_api_nlp'] ?? 0,
             ],
         ],
         'message' => 'Resultats de l\'analyse recuperes avec succes.',

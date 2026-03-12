@@ -110,23 +110,58 @@
                         </button>
                     </div>
                 </form>
+            </div>
+        </div>
+    </div>
 
-                <!-- Zone de progression (affichée pendant l'analyse) -->
-                <div id="zoneProgression" class="mt-4" style="display:none;">
-                    <div class="card" style="border-left: 3px solid var(--brand-teal);">
-                        <div class="card-body">
-                            <div class="d-flex align-items-center mb-2">
-                                <div class="spinner-border spinner-border-sm text-primary me-2" id="spinnerAnalyse"></div>
-                                <strong id="etapeAnalyse">Initialisation...</strong>
-                            </div>
-                            <div class="progress mb-2" style="height: 20px;">
-                                <div class="progress-bar progress-bar-striped progress-bar-animated" id="barreProgression"
-                                     style="width:0%; background-color: var(--brand-teal);">0%</div>
-                            </div>
-                            <small class="text-muted" id="detailsProgression"></small>
-                        </div>
-                    </div>
-                </div>
+    <!-- ===== ZONE PROGRESSION (globale, en dehors des vues) ===== -->
+    <div id="zoneProgression" class="d-none">
+        <!-- Status message -->
+        <div id="statusMsg" class="status-msg mb-4">
+            <i class="bi bi-hourglass-split me-1"></i>
+            <span id="etapeAnalyse">Initialisation...</span>
+        </div>
+
+        <!-- KPI en temps réel -->
+        <div class="kpi-row mb-4" id="kpiProgression">
+            <div class="kpi-card kpi-dark">
+                <div class="kpi-value" id="kpiProgressPosts">0</div>
+                <div class="kpi-label">Publications</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-value" id="kpiProgressComments">0</div>
+                <div class="kpi-label">Commentaires</div>
+            </div>
+            <div class="kpi-card kpi-gold">
+                <div class="kpi-value" id="kpiProgressPourcent">0 %</div>
+                <div class="kpi-label">Progression</div>
+            </div>
+            <div class="kpi-card kpi-green">
+                <div class="kpi-value" id="kpiProgressDuree">&mdash;</div>
+                <div class="kpi-label">Dur&eacute;e</div>
+            </div>
+        </div>
+
+        <!-- Barre de progression -->
+        <div class="progress mb-4" style="height: 8px; border-radius: 4px;">
+            <div class="progress-bar progress-bar-striped progress-bar-animated" id="barreProgression"
+                 style="width:0%; background-color: var(--brand-teal);" role="progressbar"
+                 aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+        </div>
+
+        <!-- Journal d'exécution (style sitemap-killer) -->
+        <div class="card mb-4" id="sectionJournal">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">
+                    <i class="bi bi-terminal me-1"></i> Journal d'ex&eacute;cution
+                    <small class="text-muted ms-2" id="livelog-compteur">0 lignes</small>
+                </h6>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="btnToggleJournal" title="R&eacute;duire / Agrandir">
+                    <i class="bi bi-chevron-up"></i>
+                </button>
+            </div>
+            <div class="card-body p-0" id="corpsJournal">
+                <pre class="journal-log mb-0" id="livelog"></pre>
             </div>
         </div>
     </div>
@@ -185,6 +220,32 @@
                                 <label for="paramUserAgent" class="form-label">User Agent</label>
                                 <input type="text" class="form-control" id="paramUserAgent" name="reddit_user_agent"
                                        value="reddit-reputation-analyzer/1.0">
+                            </div>
+                            <button type="submit" class="btn btn-primary btn-sm">
+                                <i class="bi bi-check-lg me-1"></i> Enregistrer
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            <!-- Configuration Google NLP -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0 fw-bold"><i class="bi bi-cloud me-1"></i> Google NLP</h5>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted small mb-3">
+                            Clé API Google Cloud Natural Language pour l'analyse de sentiment ML.
+                            Si absente, le lexique local est utilisé.
+                        </p>
+                        <form id="formulaireParametresNlp">
+                            <div class="mb-3">
+                                <label for="paramGoogleNlpKey" class="form-label">Clé API Google NLP</label>
+                                <input type="password" class="form-control" id="paramGoogleNlpKey" name="google_nlp_api_key">
+                            </div>
+                            <div id="nlpModeIndicateur" class="mb-3">
+                                <!-- JS affichera le mode actif ici -->
                             </div>
                             <button type="submit" class="btn btn-primary btn-sm">
                                 <i class="bi bi-check-lg me-1"></i> Enregistrer

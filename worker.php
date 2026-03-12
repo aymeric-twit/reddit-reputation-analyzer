@@ -90,6 +90,26 @@ function ecrireProgression(string $dossierJob, array $donnees): void
 }
 
 /**
+ * Ajoute une ligne au journal du job (log.jsonl).
+ *
+ * Chaque ligne est un objet JSON avec horodatage, niveau et message.
+ *
+ * @param string $dossierJob Chemin du dossier du job
+ * @param string $message    Message a journaliser
+ * @param string $niveau     Niveau : info, success, warning, error
+ */
+function journaliser(string $dossierJob, string $message, string $niveau = 'info'): void
+{
+    $ligne = json_encode([
+        'ts'      => date('H:i:s'),
+        'niveau'  => $niveau,
+        'message' => $message,
+    ], JSON_UNESCAPED_UNICODE) . "\n";
+
+    file_put_contents($dossierJob . '/log.jsonl', $ligne, FILE_APPEND | LOCK_EX);
+}
+
+/**
  * Met a jour la progression avec un pourcentage et une etape.
  *
  * @param string $dossierJob  Chemin du dossier du job
@@ -156,6 +176,14 @@ try {
 
     // --- Etape 1 : Connexion Reddit (5%) ---
     mettreAJourProgression($dossierJob, 5, 'Connexion a Reddit...', 'Detection du mode de collecte');
+    journaliser($dossierJob, "Demarrage de l'analyse pour \"{$marque}\"");
+    journaliser($dossierJob, "Periode : {$periode} | Limite : {$limite} posts");
+    if (!empty($subreddits)) {
+        journaliser($dossierJob, 'Subreddits cibles : ' . implode(', ', $subreddits));
+    }
+    if (!empty($motsCles)) {
+        journaliser($dossierJob, 'Mots-cles : ' . implode(', ', $motsCles));
+    }
 
     $collecteur = new CollecteurReddit();
     $collecteur->authentifier();
@@ -168,6 +196,7 @@ try {
         default       => $modeCollecte,
     };
     mettreAJourProgression($dossierJob, 8, 'Connexion a Reddit...', "Mode : {$labelMode}");
+    journaliser($dossierJob, "Mode de collecte : {$labelMode}", 'success');
 
     // --- Etape 2 : Collecte des publications (10-40%) ---
     mettreAJourProgression($dossierJob, 10, 'Collecte des publications...', '0/' . $limite . ' publications');
@@ -191,6 +220,7 @@ try {
     );
 
     // Dedoublonnage par reddit_id
+    $nbAvantDedoublonnage = count($publications);
     $publicationsUniques = [];
     foreach ($publications as $pub) {
         $redditId = $pub['reddit_id'] ?? '';
@@ -199,6 +229,25 @@ try {
         }
     }
     $publications = array_values($publicationsUniques);
+    $nbApres = count($publications);
+    journaliser($dossierJob, "{$nbApres} publications collectees" . ($nbAvantDedoublonnage > $nbApres ? " ({$nbAvantDedoublonnage} avant dedoublonnage)" : ''), 'success');
+
+    if ($nbApres === 0) {
+        journaliser($dossierJob, 'Aucune publication trouvee sur Reddit pour cette marque', 'warning');
+    }
+
+    // Lister les subreddits trouves
+    $subredditsDetectes = [];
+    foreach ($publications as $pub) {
+        $sub = $pub['subreddit'] ?? '';
+        if ($sub !== '') {
+            $subredditsDetectes[$sub] = ($subredditsDetectes[$sub] ?? 0) + 1;
+        }
+    }
+    arsort($subredditsDetectes);
+    foreach (array_slice($subredditsDetectes, 0, 5, true) as $sub => $nb) {
+        journaliser($dossierJob, "  r/{$sub} : {$nb} post(s)");
+    }
 
     // --- Etape 3 : Collecte des commentaires (40-60%) ---
     mettreAJourProgression($dossierJob, 40, 'Collecte des commentaires...', 'Selection des publications principales');
@@ -226,15 +275,24 @@ try {
         if ($redditId !== '') {
             $comms = $collecteur->recupererCommentaires($redditId);
             $commentaires = array_merge($commentaires, $comms);
+            $titrePub = mb_substr($pub['titre'] ?? '(sans titre)', 0, 60);
+            journaliser($dossierJob, "  #{$redditId} — {$titrePub} → " . count($comms) . ' commentaires');
         }
     }
+
+    journaliser($dossierJob, count($commentaires) . ' commentaires collectes au total', 'success');
 
     // --- Etape 4 : Analyse de sentiment (60-75%) ---
     mettreAJourProgression($dossierJob, 60, 'Analyse de sentiment...', 'Traitement des textes');
 
     $analyseurSentiment = new AnalyseurSentiment();
+    $modeSentiment = $analyseurSentiment->obtenirMode();
+    $labelMode = $modeSentiment === 'google_nlp' ? 'Google NLP' : 'Lexique local';
     $totalTextes = count($publications) + count($commentaires);
     $indexGlobal = 0;
+
+    mettreAJourProgression($dossierJob, 60, "Analyse de sentiment ({$labelMode})...", "Traitement de {$totalTextes} textes");
+    journaliser($dossierJob, "Analyse de sentiment : methode {$labelMode}, {$totalTextes} textes a traiter");
 
     // Analyser le sentiment sur les publications
     foreach ($publications as &$pub) {
@@ -267,7 +325,20 @@ try {
     }
     unset($comm);
 
-    $tousLesTextes = array_merge($publications, $commentaires);
+    // Extraire les textes bruts pour l'analyse textuelle
+    $tousLesTextes = [];
+    foreach ($publications as $pub) {
+        $texte = trim(($pub['titre'] ?? '') . ' ' . ($pub['contenu'] ?? ''));
+        if ($texte !== '') {
+            $tousLesTextes[] = $texte;
+        }
+    }
+    foreach ($commentaires as $comm) {
+        $texte = trim($comm['contenu'] ?? '');
+        if ($texte !== '') {
+            $tousLesTextes[] = $texte;
+        }
+    }
 
     // --- Etape 5 : Extraction des sujets (75-85%) ---
     mettreAJourProgression($dossierJob, 75, 'Extraction des sujets...', 'Identification des themes recurrents');
@@ -276,6 +347,10 @@ try {
     $sujetsExtraits = $analyseurTexte->extraireSujets($tousLesTextes);
 
     mettreAJourProgression($dossierJob, 85, 'Extraction des sujets...', count($sujetsExtraits) . ' sujets identifies');
+    journaliser($dossierJob, count($sujetsExtraits) . ' sujets identifies', 'success');
+    foreach (array_slice($sujetsExtraits, 0, 5) as $sujet) {
+        journaliser($dossierJob, '  — ' . ($sujet['label'] ?? '?') . ' (freq: ' . ($sujet['frequence'] ?? 0) . ')');
+    }
 
     // --- Etape 6 : Detection des questions (85-90%) ---
     mettreAJourProgression($dossierJob, 85, 'Detection des questions...', 'Recherche des questions frequentes');
@@ -283,19 +358,24 @@ try {
     $questionsDetectees = $analyseurTexte->detecterQuestions($tousLesTextes);
 
     mettreAJourProgression($dossierJob, 90, 'Detection des questions...', count($questionsDetectees) . ' questions trouvees');
+    journaliser($dossierJob, count($questionsDetectees) . ' questions detectees', 'success');
 
     // --- Etape 7 : Calcul du score de reputation (90-95%) ---
     mettreAJourProgression($dossierJob, 90, 'Calcul du score de reputation...', 'Agregation des metriques');
+    journaliser($dossierJob, 'Calcul du score de reputation...');
 
     $calculateurReputation = new CalculateurReputation();
     $scoreReputation = $calculateurReputation->calculerScore($publications, $commentaires);
     $facteurs = $calculateurReputation->extraireFacteurs($publications, $sujetsExtraits);
     $scoreReputation['facteurs'] = $facteurs;
 
-    mettreAJourProgression($dossierJob, 95, 'Calcul du score de reputation...', 'Score : ' . round($scoreReputation['score_global'], 1) . '/100');
+    $scoreFinal = round($scoreReputation['score_global'], 1);
+    mettreAJourProgression($dossierJob, 95, 'Calcul du score de reputation...', "Score : {$scoreFinal}/100");
+    journaliser($dossierJob, "Score de reputation : {$scoreFinal}/100", $scoreFinal >= 60 ? 'success' : ($scoreFinal >= 40 ? 'warning' : 'error'));
 
     // --- Etape 8 : Finalisation (95-100%) ---
     mettreAJourProgression($dossierJob, 95, 'Finalisation...', 'Enregistrement des resultats en base');
+    journaliser($dossierJob, 'Enregistrement des resultats en base de donnees...');
 
     // Stockage des publications en base
     $bd->connexion()->beginTransaction();
@@ -372,7 +452,8 @@ try {
 
         // Extraire et inserer les auteurs influents
         $auteursMap = [];
-        foreach ($tousLesTextes as $item) {
+        $toutesEntrees = array_merge($publications, $commentaires);
+        foreach ($toutesEntrees as $item) {
             $nomAuteur = $item['auteur'] ?? $item['author'] ?? '[deleted]';
             if ($nomAuteur === '[deleted]' || $nomAuteur === 'AutoModerator') {
                 continue;
@@ -441,6 +522,8 @@ try {
             'nb_questions'              => count($questionsDetectees),
             'nb_auteurs'                => count($auteursMap),
             'facteurs'                  => $scoreReputation['facteurs'] ?? [],
+            'methode_sentiment'         => $modeSentiment,
+            'appels_api_nlp'            => $analyseurSentiment->obtenirCompteurAppelsApi(),
         ];
 
         // Mettre a jour l'analyse avec les resultats
@@ -474,7 +557,11 @@ try {
         throw $e;
     }
 
+    journaliser($dossierJob, "{$nbPositif} positif / {$nbNeutre} neutre / {$nbNegatif} negatif");
+    journaliser($dossierJob, count($auteursMap) . ' auteurs identifies');
+
     // --- Progression finale ---
+    journaliser($dossierJob, "Analyse terminee avec succes — score {$scoreFinal}/100", 'success');
     ecrireProgression($dossierJob, [
         'statut'      => 'termine',
         'pourcentage' => 100,
@@ -487,6 +574,9 @@ try {
 } catch (\Throwable $e) {
     // Mise a jour du statut en erreur
     $bd->modifier('analyses', ['statut' => 'erreur'], 'id = ?', [$analyseId]);
+
+    journaliser($dossierJob, 'ERREUR : ' . $e->getMessage(), 'error');
+    journaliser($dossierJob, $e->getFile() . ':' . $e->getLine(), 'error');
 
     ecrireProgression($dossierJob, [
         'statut'      => 'erreur',
