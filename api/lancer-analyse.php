@@ -161,17 +161,25 @@ try {
     // Mode de collecte et donnees navigateur
     $modeCollecte = trim((string) ($donnees['mode_collecte'] ?? 'serpapi'));
     $donneesReddit = $donnees['donnees_reddit'] ?? '';
+    $domaineGoogle = trim((string) ($donnees['domaine_google'] ?? 'google.com'));
+
+    // Validation du domaine Google
+    $domainesValides = ['google.com', 'google.fr', 'google.co.uk', 'google.de', 'google.es', 'google.it'];
+    if (!in_array($domaineGoogle, $domainesValides, true)) {
+        $domaineGoogle = 'google.com';
+    }
 
     // Ecriture de la configuration du job
     $configJob = [
-        'marque'         => $marque,
-        'marque_id'      => $marqueId,
-        'analyse_id'     => $analyseId,
-        'periode'        => $periode,
-        'limite'         => $limite,
-        'subreddits'     => $subreddits,
-        'mots_cles'      => $motsCles,
-        'mode_collecte'  => $modeCollecte,
+        'marque'          => $marque,
+        'marque_id'       => $marqueId,
+        'analyse_id'      => $analyseId,
+        'periode'         => $periode,
+        'limite'          => $limite,
+        'subreddits'      => $subreddits,
+        'mots_cles'       => $motsCles,
+        'mode_collecte'   => $modeCollecte,
+        'domaine_google'  => $domaineGoogle,
     ];
 
     // En mode navigateur, stocker le JSON Reddit pre-charge

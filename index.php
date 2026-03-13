@@ -92,6 +92,18 @@
                             <input type="number" class="form-control" id="limite" name="limite"
                                    value="500" min="50" max="2000" step="50">
                         </div>
+                        <!-- Domaine Google -->
+                        <div class="col-md-3">
+                            <label for="domaineGoogle" class="form-label">Google</label>
+                            <select class="form-select" id="domaineGoogle" name="domaine_google">
+                                <option value="google.com">google.com (EN)</option>
+                                <option value="google.fr">google.fr (FR)</option>
+                                <option value="google.co.uk">google.co.uk (UK)</option>
+                                <option value="google.de">google.de (DE)</option>
+                                <option value="google.es">google.es (ES)</option>
+                                <option value="google.it">google.it (IT)</option>
+                            </select>
+                        </div>
                         <!-- Subreddits -->
                         <div class="col-md-6">
                             <label for="subreddits" class="form-label">Subreddits ciblés <small class="text-muted">(optionnel, séparés par des virgules)</small></label>

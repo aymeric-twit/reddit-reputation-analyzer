@@ -59,6 +59,7 @@ class CollecteurReddit
         array $subreddits = [],
         array $motsCles = [],
         ?callable $rappelProgression = null,
+        string $domaineGoogle = 'google.com',
     ): array {
         $this->rappelProgression = $rappelProgression;
 
@@ -68,7 +69,7 @@ class CollecteurReddit
             );
         }
 
-        return $this->rechercherViaSerpApi($marque, $periode, $limite, $subreddits, $motsCles);
+        return $this->rechercherViaSerpApi($marque, $periode, $limite, $subreddits, $motsCles, $domaineGoogle);
     }
 
     /**
@@ -105,10 +106,23 @@ class CollecteurReddit
         int $limite,
         array $subreddits,
         array $motsCles,
+        string $domaineGoogle = 'google.com',
     ): array {
         $publications = [];
         /** @var array<string, true> Index des reddit_id deja collectes */
         $idsVus = [];
+
+        // Langue et pays selon le domaine Google
+        [$hl, $gl] = match ($domaineGoogle) {
+            'google.fr'  => ['fr', 'fr'],
+            'google.de'  => ['de', 'de'],
+            'google.es'  => ['es', 'es'],
+            'google.it'  => ['it', 'it'],
+            'google.co.uk' => ['en', 'uk'],
+            default      => ['en', 'us'],
+        };
+
+        $this->journaliserCollecte("Domaine Google : {$domaineGoogle} (hl={$hl}, gl={$gl})");
 
         // Filtre temporel Google (tbs parameter)
         $filtreTemps = match ($periode) {
@@ -160,8 +174,9 @@ class CollecteurReddit
             ];
         }
 
-        // --- Lancer les requetes ---
-        $maxAppelsTotal = 10;
+        // --- Lancer les requetes avec pagination ---
+        $maxAppelsTotal = 15;
+        $maxPagesParRequete = 3;
         $appelsTotal = 0;
 
         foreach ($requetes as $req) {
@@ -170,63 +185,81 @@ class CollecteurReddit
             }
 
             $this->journaliserCollecte("SerpAPI [{$req['label']}] : {$req['q']}");
-            $this->respecterRateLimit(0.5);
 
-            $params = [
-                'engine'  => 'google',
-                'q'       => $req['q'],
-                'api_key' => $this->cleApiSerp,
-                'num'     => 100,
-                'start'   => 0,
-                'hl'      => 'en',
-                'gl'      => 'us',
-            ];
-
-            // Filtre temporel par defaut
-            if ($filtreTemps !== null && !isset($req['extra']['tbs'])) {
-                $params['tbs'] = $filtreTemps;
-            }
-
-            // Parametres supplementaires
-            if (isset($req['extra'])) {
-                $params = array_merge($params, $req['extra']);
-            }
-
-            $reponse = $this->requeteSerpApi($params);
-            $appelsTotal++;
-
-            if ($reponse === null) {
-                continue;
-            }
-
-            $resultats = $reponse['organic_results'] ?? [];
-            $nouveaux = 0;
-
-            foreach ($resultats as $resultat) {
-                $pub = $this->convertirResultatSerpApi($resultat);
-                if ($pub === null) {
-                    continue;
+            // Pagination : jusqu'a $maxPagesParRequete pages par requete
+            for ($page = 0; $page < $maxPagesParRequete; $page++) {
+                if (count($publications) >= $limite || $appelsTotal >= $maxAppelsTotal) {
+                    break;
                 }
 
-                // Deduplication par reddit_id
-                if (isset($idsVus[$pub['reddit_id']])) {
-                    continue;
+                $this->respecterRateLimit(0.5);
+
+                $params = [
+                    'engine'        => 'google',
+                    'q'             => $req['q'],
+                    'api_key'       => $this->cleApiSerp,
+                    'num'           => 100,
+                    'start'         => $page * 100,
+                    'hl'            => $hl,
+                    'gl'            => $gl,
+                    'google_domain' => $domaineGoogle,
+                ];
+
+                // Filtre temporel par defaut
+                if ($filtreTemps !== null && !isset($req['extra']['tbs'])) {
+                    $params['tbs'] = $filtreTemps;
                 }
 
-                $idsVus[$pub['reddit_id']] = true;
-                $publications[] = $pub;
-                $nouveaux++;
-                $this->notifierProgression(count($publications));
+                // Parametres supplementaires
+                if (isset($req['extra'])) {
+                    $params = array_merge($params, $req['extra']);
+                }
 
-                if (count($publications) >= $limite) {
+                $reponse = $this->requeteSerpApi($params);
+                $appelsTotal++;
+
+                if ($reponse === null) {
+                    break;
+                }
+
+                $resultats = $reponse['organic_results'] ?? [];
+                if (empty($resultats)) {
+                    $this->journaliserCollecte("SerpAPI [{$req['label']}] page " . ($page + 1) . " : 0 resultats");
+                    break;
+                }
+
+                $nouveaux = 0;
+                foreach ($resultats as $resultat) {
+                    $pub = $this->convertirResultatSerpApi($resultat);
+                    if ($pub === null) {
+                        continue;
+                    }
+
+                    // Deduplication par reddit_id
+                    if (isset($idsVus[$pub['reddit_id']])) {
+                        continue;
+                    }
+
+                    $idsVus[$pub['reddit_id']] = true;
+                    $publications[] = $pub;
+                    $nouveaux++;
+                    $this->notifierProgression(count($publications));
+
+                    if (count($publications) >= $limite) {
+                        break;
+                    }
+                }
+
+                $this->journaliserCollecte(
+                    "SerpAPI [{$req['label']}] page " . ($page + 1) . " : {$nouveaux} nouveaux posts"
+                    . " (total " . count($publications) . ", {$appelsTotal} appels)"
+                );
+
+                // Arreter la pagination si pas de page suivante
+                if (empty($reponse['serpapi_pagination']['next'])) {
                     break;
                 }
             }
-
-            $this->journaliserCollecte(
-                "SerpAPI [{$req['label']}] : {$nouveaux} nouveaux posts"
-                . " (total " . count($publications) . ", {$appelsTotal} appels API)"
-            );
         }
 
         $this->journaliserCollecte(

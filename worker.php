@@ -230,12 +230,14 @@ try {
             journaliser($dossierJob, $message, $niveau);
         });
 
+        $domaineGoogle = $config['domaine_google'] ?? 'google.com';
         $publications = $collecteur->rechercherPublications(
             marque: $marque,
             periode: $periode,
             limite: $limite,
             subreddits: $subreddits,
             motsCles: $motsCles,
+            domaineGoogle: $domaineGoogle,
             rappelProgression: function (int $collectees) use ($dossierJob, $limite): void {
                 $pourcentage = 10 + (int) (($collectees / max($limite, 1)) * 30);
                 $pourcentage = min($pourcentage, 40);
