@@ -91,7 +91,11 @@ class CollecteurReddit
     /**
      * Recherche via SerpAPI Google Search avec site:reddit.com.
      *
-     * Max 3 appels API par analyse (num=100 par appel = 300 URLs max).
+     * Strategie multi-requetes pour maximiser le volume :
+     * 1. Requete principale (marque exacte)
+     * 2. Variantes par tri Google (pertinence + date)
+     * 3. Si subreddits cibles, requete par subreddit
+     * 4. Si mots-cles, requete par mot-cle
      *
      * @return array<int, array<string, mixed>>
      */
@@ -103,13 +107,8 @@ class CollecteurReddit
         array $motsCles,
     ): array {
         $publications = [];
-        $debut = 0;
-        $parPage = 100;
-        $maxAppels = 3;
-        $appels = 0;
-
-        $requete = $this->construireRequeteSerpApi($marque, $subreddits, $motsCles);
-        $this->journaliserCollecte("SerpAPI Google Search : {$requete}");
+        /** @var array<string, true> Index des reddit_id deja collectes */
+        $idsVus = [];
 
         // Filtre temporel Google (tbs parameter)
         $filtreTemps = match ($periode) {
@@ -121,55 +120,117 @@ class CollecteurReddit
             default => null,
         };
 
-        while (count($publications) < $limite && $appels < $maxAppels) {
+        // --- Construire la liste des requetes a lancer ---
+        $requetes = [];
+
+        // 1. Requete principale (pertinence)
+        $requetes[] = [
+            'q'    => $this->construireRequeteSerpApi($marque, [], []),
+            'label' => 'principale',
+        ];
+
+        // 2. Meme requete triee par date (Google : tbs=sbd:1)
+        $requetes[] = [
+            'q'     => $this->construireRequeteSerpApi($marque, [], []),
+            'label' => 'recentes',
+            'extra' => ['tbs' => ($filtreTemps !== null ? $filtreTemps . ',sbd:1' : 'sbd:1')],
+        ];
+
+        // 3. Par subreddit cible (si fournis)
+        foreach (array_slice($subreddits, 0, 5) as $sub) {
+            $requetes[] = [
+                'q'     => $this->construireRequeteSerpApi($marque, [$sub], []),
+                'label' => "r/{$sub}",
+            ];
+        }
+
+        // 4. Par mot-cle (si fournis)
+        foreach (array_slice($motsCles, 0, 3) as $mc) {
+            $requetes[] = [
+                'q'     => $this->construireRequeteSerpApi($marque, [], [$mc]),
+                'label' => "mot-cle:{$mc}",
+            ];
+        }
+
+        // 5. Sans guillemets (plus large) si marque multi-mots
+        if (str_contains($marque, ' ')) {
+            $requetes[] = [
+                'q'     => 'site:reddit.com ' . $marque,
+                'label' => 'sans guillemets',
+            ];
+        }
+
+        // --- Lancer les requetes ---
+        $maxAppelsTotal = 10;
+        $appelsTotal = 0;
+
+        foreach ($requetes as $req) {
+            if (count($publications) >= $limite || $appelsTotal >= $maxAppelsTotal) {
+                break;
+            }
+
+            $this->journaliserCollecte("SerpAPI [{$req['label']}] : {$req['q']}");
+            $this->respecterRateLimit(0.5);
+
             $params = [
                 'engine'  => 'google',
-                'q'       => $requete,
+                'q'       => $req['q'],
                 'api_key' => $this->cleApiSerp,
-                'num'     => $parPage,
-                'start'   => $debut,
+                'num'     => 100,
+                'start'   => 0,
                 'hl'      => 'en',
                 'gl'      => 'us',
             ];
-            if ($filtreTemps !== null) {
+
+            // Filtre temporel par defaut
+            if ($filtreTemps !== null && !isset($req['extra']['tbs'])) {
                 $params['tbs'] = $filtreTemps;
             }
 
+            // Parametres supplementaires
+            if (isset($req['extra'])) {
+                $params = array_merge($params, $req['extra']);
+            }
+
             $reponse = $this->requeteSerpApi($params);
-            $appels++;
+            $appelsTotal++;
 
             if ($reponse === null) {
-                break;
+                continue;
             }
 
             $resultats = $reponse['organic_results'] ?? [];
-            if (empty($resultats)) {
-                $this->journaliserCollecte("SerpAPI : 0 resultats organiques (page {$appels})");
-                break;
-            }
-
             $nouveaux = 0;
+
             foreach ($resultats as $resultat) {
                 $pub = $this->convertirResultatSerpApi($resultat);
-                if ($pub !== null) {
-                    $publications[] = $pub;
-                    $nouveaux++;
-                    $this->notifierProgression(count($publications));
+                if ($pub === null) {
+                    continue;
                 }
+
+                // Deduplication par reddit_id
+                if (isset($idsVus[$pub['reddit_id']])) {
+                    continue;
+                }
+
+                $idsVus[$pub['reddit_id']] = true;
+                $publications[] = $pub;
+                $nouveaux++;
+                $this->notifierProgression(count($publications));
+
                 if (count($publications) >= $limite) {
                     break;
                 }
             }
-            $this->journaliserCollecte("SerpAPI page {$appels} : {$nouveaux} posts Reddit extraits");
 
-            $debut += $parPage;
-            if (empty($reponse['serpapi_pagination']['next'])) {
-                break;
-            }
+            $this->journaliserCollecte(
+                "SerpAPI [{$req['label']}] : {$nouveaux} nouveaux posts"
+                . " (total " . count($publications) . ", {$appelsTotal} appels API)"
+            );
         }
 
         $this->journaliserCollecte(
-            count($publications) . " publications collectees via SerpAPI",
+            count($publications) . " publications collectees via SerpAPI ({$appelsTotal} appels API)",
             count($publications) > 0 ? 'success' : 'warning'
         );
 

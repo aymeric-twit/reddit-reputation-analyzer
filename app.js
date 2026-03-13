@@ -1300,7 +1300,7 @@ function renderGaugeScore(canvas, score) {
  */
 function renderGraphiqueSentiment(sentiments) {
     if (!sentiments) return;
-    const canvasId = 'graphiqueSentiment';
+    const canvasId = 'graphiqueSentimentDonut';
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
 
@@ -1356,7 +1356,7 @@ function renderGraphiqueSentiment(sentiments) {
  */
 function renderGraphiqueTemporel(temporel) {
     if (!temporel || !temporel.labels) return;
-    const canvasId = 'graphiqueTemporel';
+    const canvasId = 'graphiqueEvolutionTemporelle';
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
 
@@ -1501,7 +1501,7 @@ function renderSujets(data) {
  * @param {Array} sujets Liste des sujets avec frequences
  */
 function renderNuageMots(sujets) {
-    const conteneur = document.getElementById('nuageMots');
+    const conteneur = document.getElementById('sujets-wordcloud');
     if (!conteneur || sujets.length === 0) return;
 
     const maxFreq = Math.max(...sujets.map(s => s.frequence || s.count || 1));
@@ -1560,8 +1560,8 @@ function renderNuageMots(sujets) {
  */
 function renderQuestions(data) {
     const questions = data.questions || [];
-    const conteneur = document.getElementById('listeQuestions');
-    const filtres = document.getElementById('filtresQuestions');
+    const conteneur = document.getElementById('liste-questions');
+    const filtres = document.getElementById('filtres-questions');
     if (!conteneur) return;
 
     if (questions.length === 0) {
@@ -1637,8 +1637,8 @@ function renderQuestions(data) {
  */
 function renderDiscussions(data) {
     const discussions = data.discussions || [];
-    const conteneur = document.getElementById('tableauDiscussions');
-    const filtres = document.getElementById('filtresDiscussions');
+    const conteneur = document.getElementById('corpsDiscussions');
+    const filtres = document.getElementById('filtres-discussions');
     if (!conteneur) return;
 
     if (discussions.length === 0) {
@@ -1728,7 +1728,7 @@ function renderDiscussions(data) {
  * @param {Array} discussions Liste des discussions
  */
 function renderScatterDiscussions(discussions) {
-    const canvasId = 'graphiqueScatterDiscussions';
+    const canvasId = 'graphiqueEngagementSentiment';
     const canvas = document.getElementById(canvasId);
     if (!canvas || discussions.length === 0) return;
 
@@ -1828,7 +1828,7 @@ function renderFacteurs(data) {
     const negatifs = facteurs.negatifs || [];
 
     // Colonne facteurs positifs
-    const colPositifs = document.getElementById('facteursPositifs');
+    const colPositifs = document.getElementById('facteurs-positifs');
     if (colPositifs) {
         if (positifs.length === 0) {
             colPositifs.innerHTML = '<p class="text-muted">Aucun facteur positif identifie.</p>';
@@ -1838,7 +1838,7 @@ function renderFacteurs(data) {
     }
 
     // Colonne facteurs negatifs
-    const colNegatifs = document.getElementById('facteursNegatifs');
+    const colNegatifs = document.getElementById('facteurs-negatifs');
     if (colNegatifs) {
         if (negatifs.length === 0) {
             colNegatifs.innerHTML = '<p class="text-muted">Aucun facteur negatif identifie.</p>';
@@ -2142,7 +2142,7 @@ function renderGeographie(data) {
  * @param {Array} regions Liste des regions
  */
 function renderGraphiqueGeographie(regions) {
-    const canvasId = 'graphiqueGeographie';
+    const canvasId = 'graphiqueSentimentRegions';
     const canvas = document.getElementById(canvasId);
     if (!canvas || regions.length === 0) return;
 
@@ -2227,7 +2227,7 @@ function renderOpportunites(data) {
         advocates: { titre: 'Advocates', icone: 'bi-star', couleur: COULEURS_GRAPHIQUES.vert },
     };
 
-    const conteneur = document.getElementById('listeOpportunites');
+    const conteneur = document.getElementById('liste-opportunites');
     if (conteneur) {
         let html = '';
 
@@ -2256,7 +2256,7 @@ function renderOpportunites(data) {
     }
 
     // Recommandations
-    const listeRecos = document.getElementById('listeRecommandations');
+    const listeRecos = document.getElementById('recommandations');
     const recommandations = opportunites.recommandations || data.recommandations || [];
     if (listeRecos) {
         if (recommandations.length === 0) {
