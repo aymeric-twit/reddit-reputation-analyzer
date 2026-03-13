@@ -508,7 +508,7 @@ $scoreReputation = $analyse['score_reputation'] !== null ? round((float)$analyse
 
 <!-- Bootstrap JS + Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script src="assets/js/chart.umd.min.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

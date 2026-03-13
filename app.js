@@ -202,16 +202,28 @@ const COULEURS_GRAPHIQUES = {
  *
  * @returns {Promise<void>}
  */
+let _chartJsPromise = null;
 function chargerChartJs() {
     if (typeof Chart !== 'undefined') return Promise.resolve();
+    if (_chartJsPromise) return _chartJsPromise;
 
-    return new Promise((resolve, reject) => {
+    _chartJsPromise = new Promise(function(resolve, reject) {
         const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4';
+        // Fichier local UMD (le CDN est supprime par la plateforme en embedded)
+        const base = window.MODULE_BASE_URL || '.';
+        script.src = base + '/assets/js/chart.umd.min.js';
         script.onload = resolve;
-        script.onerror = () => reject(new Error('Impossible de charger Chart.js'));
+        script.onerror = function() {
+            // Fallback CDN si le fichier local echoue
+            const fallback = document.createElement('script');
+            fallback.src = 'https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js';
+            fallback.onload = resolve;
+            fallback.onerror = function() { reject(new Error('Impossible de charger Chart.js')); };
+            document.head.appendChild(fallback);
+        };
         document.head.appendChild(script);
     });
+    return _chartJsPromise;
 }
 
 /**
