@@ -28,10 +28,21 @@ class CollecteurReddit
     /** Indique si la session navigateur a ete initialisee (cookies Reddit obtenus) */
     private bool $sessionInitialisee = false;
 
+    /** URL du proxy HTTP(S) (ex: http://user:pass@proxy:port) */
+    private ?string $proxy = null;
+
     private const string URL_AUTHENTIFICATION = 'https://www.reddit.com/api/v1/access_token';
     private const string URL_API = 'https://oauth.reddit.com';
-    private const string URL_REDDIT_PUBLIC = 'https://www.reddit.com';
     private const string URL_DDG = 'https://html.duckduckgo.com/html/';
+
+    /** Domaines Reddit a essayer dans l'ordre (old.reddit est moins protege) */
+    private const array DOMAINES_REDDIT = [
+        'https://old.reddit.com',
+        'https://www.reddit.com',
+    ];
+
+    /** Domaine Reddit actif (determine lors de l'init session) */
+    private string $urlRedditPublic = 'https://old.reddit.com';
 
     /** Version Chrome emulee — a mettre a jour periodiquement */
     private const string CHROME_VERSION = '131.0.0.0';
@@ -56,6 +67,10 @@ class CollecteurReddit
         $this->clientId = $_ENV['REDDIT_CLIENT_ID'] ?? getenv('REDDIT_CLIENT_ID') ?: null;
         $this->clientSecret = $_ENV['REDDIT_CLIENT_SECRET'] ?? getenv('REDDIT_CLIENT_SECRET') ?: null;
         $this->userAgent = self::USER_AGENT;
+
+        // Proxy HTTP optionnel (pour les serveurs sur IP datacenter bloques par Reddit)
+        $proxy = $_ENV['REDDIT_PROXY'] ?? getenv('REDDIT_PROXY') ?: null;
+        $this->proxy = !empty($proxy) ? $proxy : null;
 
         // Cookie jar dans le dossier data/ du plugin (persistant entre requetes)
         $dossierData = __DIR__ . '/../data';
@@ -83,10 +98,11 @@ class CollecteurReddit
     }
 
     /**
-     * Initialise une session navigateur en visitant reddit.com pour obtenir les cookies.
+     * Initialise une session navigateur en visitant Reddit pour obtenir les cookies.
      *
-     * Reddit pose des cookies (session_tracker, csv, edgebucket, etc.) lors de la
-     * premiere visite. Sans ces cookies, les requetes .json renvoient 403.
+     * Essaie old.reddit.com en priorite (moins de protection anti-bot),
+     * puis www.reddit.com en fallback. Le domaine qui repond 200 est retenu
+     * pour toutes les requetes suivantes.
      */
     private function initialiserSessionNavigateur(): void
     {
@@ -97,41 +113,33 @@ class CollecteurReddit
         // Si le cookie jar existe et est recent (< 30 min), reutiliser
         if (file_exists($this->cheminCookies) && (time() - filemtime($this->cheminCookies)) < 1800) {
             $this->sessionInitialisee = true;
-            $this->journaliserCollecte("Reutilisation du cookie jar existant");
+            $this->journaliserCollecte("Reutilisation du cookie jar existant ({$this->urlRedditPublic})");
             return;
         }
 
-        $this->journaliserCollecte("Initialisation session navigateur (visite reddit.com)");
+        // Essayer chaque domaine jusqu'a en trouver un qui repond 200
+        foreach (self::DOMAINES_REDDIT as $domaine) {
+            $this->journaliserCollecte("Initialisation session navigateur ({$domaine})");
 
-        $ch = curl_init();
-        curl_setopt_array($ch, [
-            CURLOPT_URL            => 'https://www.reddit.com/',
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_MAXREDIRS      => 5,
-            CURLOPT_TIMEOUT        => 30,
-            CURLOPT_CONNECTTIMEOUT => 10,
-            CURLOPT_COOKIEJAR      => $this->cheminCookies,
-            CURLOPT_COOKIEFILE     => $this->cheminCookies,
-            CURLOPT_ENCODING       => 'gzip, deflate, br',
-            CURLOPT_HTTPHEADER     => $this->headersNavigateurHtml(),
-            CURLOPT_SSLVERSION     => CURL_SSLVERSION_TLSv1_2,
-            CURLOPT_HTTP_VERSION   => CURL_HTTP_VERSION_2_0,
-            CURLOPT_USERAGENT      => $this->userAgent,
-        ]);
+            $resultat = $this->requeteCurl($domaine . '/', $this->headersNavigateurHtml());
+            $codeHttp = $resultat['code_http'];
 
-        $reponse = curl_exec($ch);
-        $codeHttp = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
+            if ($resultat['corps'] !== false && $codeHttp === 200) {
+                $this->urlRedditPublic = $domaine;
+                $this->sessionInitialisee = true;
+                $this->journaliserCollecte("Session initialisee via {$domaine} (cookies obtenus)", 'success');
+                return;
+            }
 
-        $this->derniereRequete = microtime(true);
-        $this->sessionInitialisee = true;
+            $this->journaliserCollecte("{$domaine} : HTTP {$codeHttp}", 'warning');
 
-        if ($reponse !== false && $codeHttp === 200) {
-            $this->journaliserCollecte("Session initialisee (cookies obtenus)", 'success');
-        } else {
-            $this->journaliserCollecte("Initialisation session : HTTP {$codeHttp}", 'warning');
+            // Supprimer les cookies invalides avant d'essayer le domaine suivant
+            @unlink($this->cheminCookies);
         }
+
+        // Aucun domaine n'a fonctionne — on continue quand meme (DuckDuckGo prendra le relais)
+        $this->sessionInitialisee = true;
+        $this->journaliserCollecte("Impossible d'initialiser la session Reddit (tous les domaines bloques)", 'warning');
     }
 
     /**
@@ -172,7 +180,7 @@ class CollecteurReddit
             'Sec-Fetch-Dest: empty',
             'Sec-Fetch-Mode: cors',
             'Sec-Fetch-Site: same-origin',
-            'Referer: https://www.reddit.com/',
+            "Referer: {$this->urlRedditPublic}/",
         ];
     }
 
@@ -204,6 +212,11 @@ class CollecteurReddit
             CURLOPT_HTTP_VERSION   => CURL_HTTP_VERSION_2_0,
             CURLOPT_USERAGENT      => $this->userAgent,
         ]);
+
+        // Proxy HTTP/HTTPS/SOCKS5 (pour les IPs datacenter bloquees par Reddit)
+        if ($this->proxy !== null) {
+            curl_setopt($ch, CURLOPT_PROXY, $this->proxy);
+        }
 
         if ($methode === 'POST') {
             curl_setopt($ch, CURLOPT_POST, true);
@@ -615,7 +628,7 @@ class CollecteurReddit
         // Rate limit pour le mode public (~6 req/min)
         $this->respecterRateLimit(10.0);
 
-        $url = self::URL_REDDIT_PUBLIC . $endpoint;
+        $url = $this->urlRedditPublic . $endpoint;
         if (!empty($params)) {
             $url .= '?' . http_build_query($params);
         }
@@ -878,8 +891,9 @@ class CollecteurReddit
         // Initialiser la session navigateur si necessaire
         $this->initialiserSessionNavigateur();
 
-        // Nettoyer l'URL et ajouter .json
-        $urlNettoyee = rtrim(preg_replace('#\?.*$#', '', $url), '/');
+        // Reecrire l'URL vers le domaine actif (old.reddit.com si disponible)
+        $urlReecrite = preg_replace('#^https?://(?:www\.|old\.)?reddit\.com#', $this->urlRedditPublic, $url);
+        $urlNettoyee = rtrim(preg_replace('#\?.*$#', '', $urlReecrite), '/');
         $urlJson = $urlNettoyee . '.json?raw_json=1&limit=0';
 
         // Rate limit modere pour les requetes individuelles de posts
