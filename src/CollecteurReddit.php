@@ -31,9 +31,13 @@ class CollecteurReddit
     /** URL du proxy HTTP(S) (ex: http://user:pass@proxy:port) */
     private ?string $proxy = null;
 
+    /** Cle API SerpAPI pour la recherche Google site:reddit.com */
+    private ?string $cleApiSerp = null;
+
     private const string URL_AUTHENTIFICATION = 'https://www.reddit.com/api/v1/access_token';
     private const string URL_API = 'https://oauth.reddit.com';
     private const string URL_DDG = 'https://html.duckduckgo.com/html/';
+    private const string URL_SERPAPI = 'https://serpapi.com/search.json';
 
     /** Domaines Reddit a essayer dans l'ordre (old.reddit est moins protege) */
     private const array DOMAINES_REDDIT = [
@@ -71,6 +75,10 @@ class CollecteurReddit
         // Proxy HTTP optionnel (pour les serveurs sur IP datacenter bloques par Reddit)
         $proxy = $_ENV['REDDIT_PROXY'] ?? getenv('REDDIT_PROXY') ?: null;
         $this->proxy = !empty($proxy) ? $proxy : null;
+
+        // SerpAPI (recherche Google site:reddit.com) — contourne le blocage IP datacenter
+        $cleSerp = $_ENV['SERPAPI_KEY'] ?? getenv('SERPAPI_KEY') ?: null;
+        $this->cleApiSerp = !empty($cleSerp) ? $cleSerp : null;
 
         // Cookie jar dans le dossier data/ du plugin (persistant entre requetes)
         $dossierData = __DIR__ . '/../data';
@@ -311,8 +319,9 @@ class CollecteurReddit
     }
 
     /**
-     * Strategie de collecte multi-sources (JSON public + DuckDuckGo).
+     * Strategie de collecte multi-sources (SerpAPI + JSON public + DuckDuckGo).
      *
+     * 0. SerpAPI Google Search site:reddit.com (si cle configuree)
      * 1. Reddit JSON public avec la periode demandee (limit=100)
      * 2. Si peu de resultats, elargir a t=all
      * 3. Essayer aussi avec des variantes de requete (sans guillemets)
@@ -328,6 +337,20 @@ class CollecteurReddit
     ): array {
         $publicationsMap = []; // Indexees par reddit_id pour deduplication
         $redditBloque = false; // Si Reddit renvoie 403/HTML, on skip les passes suivantes
+
+        // --- Passe 0 : SerpAPI Google Search (si cle disponible) ---
+        if ($this->cleApiSerp !== null) {
+            $this->journaliserCollecte("Passe 0 : SerpAPI Google Search site:reddit.com");
+            $pubsSerp = $this->rechercherViaSerpApi($marque, $periode, $limite, $subreddits, $motsCles);
+            foreach ($pubsSerp as $pub) {
+                $rid = $pub['reddit_id'] ?? '';
+                if ($rid !== '') {
+                    $publicationsMap[$rid] = $pub;
+                }
+            }
+            $this->journaliserCollecte("Passe 0 : " . count($pubsSerp) . " resultats SerpAPI", count($pubsSerp) > 0 ? 'success' : 'warning');
+            $this->notifierProgression(count($publicationsMap));
+        }
 
         // --- Passe 1 : Reddit JSON public, periode demandee ---
         $this->journaliserCollecte("Passe 1 : Reddit JSON public, periode={$periode}");
@@ -693,7 +716,241 @@ class CollecteurReddit
     }
 
     /* ========================================================================
-       MODE 3 : DuckDuckGo site:reddit.com (fallback)
+       MODE 3 : SerpAPI Google Search (contourne le blocage IP datacenter)
+       ======================================================================== */
+
+    /**
+     * Recherche via SerpAPI Google Search avec site:reddit.com.
+     *
+     * Max 3 appels API par analyse (num=100 par appel = 300 URLs max).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function rechercherViaSerpApi(
+        string $marque,
+        string $periode,
+        int $limite,
+        array $subreddits,
+        array $motsCles,
+    ): array {
+        $publications = [];
+        $debut = 0;
+        $parPage = 100;
+        $maxAppels = 3;
+        $appels = 0;
+
+        $requete = $this->construireRequeteSerpApi($marque, $subreddits, $motsCles);
+        $this->journaliserCollecte("Requete SerpAPI : {$requete}");
+
+        // Filtre temporel Google (tbs parameter)
+        $filtreTemps = match ($periode) {
+            'hour'  => 'qdr:h',
+            'day'   => 'qdr:d',
+            'week'  => 'qdr:w',
+            'month' => 'qdr:m',
+            'year'  => 'qdr:y',
+            default => null,
+        };
+
+        while (count($publications) < $limite && $appels < $maxAppels) {
+            $params = [
+                'engine'  => 'google',
+                'q'       => $requete,
+                'api_key' => $this->cleApiSerp,
+                'num'     => $parPage,
+                'start'   => $debut,
+                'hl'      => 'en',
+                'gl'      => 'us',
+            ];
+            if ($filtreTemps !== null) {
+                $params['tbs'] = $filtreTemps;
+            }
+
+            $reponse = $this->requeteSerpApi($params);
+            $appels++;
+
+            if ($reponse === null) {
+                break;
+            }
+
+            $resultats = $reponse['organic_results'] ?? [];
+            if (empty($resultats)) {
+                $this->journaliserCollecte("SerpAPI : 0 resultats organiques (page " . ($appels) . ")");
+                break;
+            }
+
+            $nouveaux = 0;
+            foreach ($resultats as $resultat) {
+                $pub = $this->convertirResultatSerpApi($resultat);
+                if ($pub !== null) {
+                    $publications[] = $pub;
+                    $nouveaux++;
+                }
+                if (count($publications) >= $limite) {
+                    break;
+                }
+            }
+            $this->journaliserCollecte("SerpAPI page {$appels} : {$nouveaux} posts Reddit extraits");
+
+            $debut += $parPage;
+            if (empty($reponse['serpapi_pagination']['next'])) {
+                break;
+            }
+        }
+
+        // Tentative d'enrichissement via Reddit JSON (score, commentaires, auteur)
+        if (!empty($publications)) {
+            $publications = $this->enrichirViaSerpApi($publications);
+        }
+
+        return $publications;
+    }
+
+    /**
+     * Execute une requete vers l'API SerpAPI.
+     *
+     * @param array<string, mixed> $params Parametres de recherche
+     * @return array<string, mixed>|null Reponse JSON decodee
+     */
+    private function requeteSerpApi(array $params): ?array
+    {
+        $url = self::URL_SERPAPI . '?' . http_build_query($params);
+
+        $resultat = $this->requeteCurl($url, ['Accept: application/json']);
+
+        if ($resultat['corps'] === false || $resultat['code_http'] !== 200) {
+            $this->journaliserCollecte("SerpAPI erreur HTTP {$resultat['code_http']}", 'warning');
+            return null;
+        }
+
+        $donnees = json_decode($resultat['corps'], true, 512);
+        if ($donnees === null) {
+            $this->journaliserCollecte("SerpAPI : reponse JSON invalide", 'warning');
+            return null;
+        }
+
+        if (isset($donnees['error'])) {
+            $this->journaliserCollecte("SerpAPI erreur : " . ($donnees['error'] ?? 'inconnue'), 'warning');
+            return null;
+        }
+
+        return $donnees;
+    }
+
+    /**
+     * Construit la requete Google pour SerpAPI.
+     */
+    private function construireRequeteSerpApi(string $marque, array $subreddits, array $motsCles): string
+    {
+        if (!empty($subreddits)) {
+            $subs = array_map(fn(string $s): string => 'site:reddit.com/r/' . trim($s), $subreddits);
+            $requete = '"' . $marque . '" (' . implode(' OR ', $subs) . ')';
+        } else {
+            $requete = 'site:reddit.com "' . $marque . '"';
+        }
+
+        if (!empty($motsCles)) {
+            $termes = array_map(fn(string $m): string => '"' . trim($m) . '"', $motsCles);
+            $requete .= ' (' . implode(' OR ', $termes) . ')';
+        }
+
+        return $requete;
+    }
+
+    /**
+     * Convertit un resultat organique SerpAPI en publication Reddit.
+     *
+     * @return array<string, mixed>|null Publication formatee ou null si l'URL n'est pas un post Reddit
+     */
+    private function convertirResultatSerpApi(array $resultat): ?array
+    {
+        $url = $resultat['link'] ?? '';
+
+        // Seuls les URLs de posts Reddit /r/xxx/comments/xxx sont valides
+        if (!preg_match('#reddit\.com/r/([^/]+)/comments/([a-z0-9]+)#i', $url, $matches)) {
+            return null;
+        }
+
+        $subreddit = $matches[1];
+        $postId = $matches[2];
+
+        // Extraction de la date (SerpAPI fournit parfois un champ date)
+        $datePublication = null;
+        $dateSource = $resultat['date'] ?? $resultat['snippet_highlighted_words'][0] ?? null;
+        if ($dateSource !== null) {
+            $timestamp = strtotime($dateSource);
+            if ($timestamp !== false && $timestamp > 0) {
+                $datePublication = date('Y-m-d H:i:s', $timestamp);
+            }
+        }
+
+        return [
+            'reddit_id'        => 't3_' . $postId,
+            'titre'            => $resultat['title'] ?? '',
+            'contenu'          => $resultat['snippet'] ?? '',
+            'url'              => 'https://www.reddit.com/r/' . $subreddit . '/comments/' . $postId . '/',
+            'subreddit'        => $subreddit,
+            'auteur'           => '[inconnu]',
+            'date_publication' => $datePublication,
+            'score'            => 0,
+            'ratio_upvote'     => 0.5,
+            'nb_commentaires'  => 0,
+            'awards'           => 0,
+            'type'             => 'post',
+        ];
+    }
+
+    /**
+     * Tente d'enrichir les publications SerpAPI avec les metadonnees Reddit.
+     *
+     * Strategie fail-fast : si le premier post renvoie 403, on arrete
+     * l'enrichissement pour ne pas perdre de temps.
+     *
+     * @param array<int, array<string, mixed>> $publications
+     * @return array<int, array<string, mixed>>
+     */
+    private function enrichirViaSerpApi(array $publications): array
+    {
+        $this->journaliserCollecte("Tentative d'enrichissement Reddit pour " . count($publications) . " posts SerpAPI");
+        $enrichis = 0;
+        $echecConsecutifs = 0;
+
+        foreach ($publications as $index => &$pub) {
+            $pubEnrichie = $this->extrairePostDepuisUrl($pub['url']);
+
+            if ($pubEnrichie !== null) {
+                // Garder le snippet SerpAPI si le selftext Reddit est vide
+                $contenuOriginal = $pub['contenu'];
+                $pub = $pubEnrichie;
+                if (empty($pub['contenu']) && !empty($contenuOriginal)) {
+                    $pub['contenu'] = $contenuOriginal;
+                }
+                $enrichis++;
+                $echecConsecutifs = 0;
+            } else {
+                $echecConsecutifs++;
+                // Fail-fast : 2 echecs consecutifs = Reddit bloque, on arrete
+                if ($echecConsecutifs >= 2) {
+                    $this->journaliserCollecte(
+                        "Reddit bloque l'enrichissement, utilisation des donnees SerpAPI seules pour les " . (count($publications) - $index - 1) . " posts restants",
+                        'warning'
+                    );
+                    break;
+                }
+            }
+        }
+        unset($pub);
+
+        $this->journaliserCollecte(
+            "{$enrichis}/" . count($publications) . " posts enrichis via Reddit JSON",
+            $enrichis > 0 ? 'success' : 'warning'
+        );
+
+        return $publications;
+    }
+
+    /* ========================================================================
+       MODE 4 : DuckDuckGo site:reddit.com (fallback)
        ======================================================================== */
 
     private function rechercherViaDdg(

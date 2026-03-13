@@ -196,6 +196,7 @@ try {
         'api'         => 'API OAuth2',
         'json_public' => 'JSON public (sans credentials)',
         'ddg'         => 'Recherche DuckDuckGo site:reddit.com',
+        'serpapi'     => 'SerpAPI Google Search',
         default       => $modeCollecte,
     };
     mettreAJourProgression($dossierJob, 8, 'Connexion a Reddit...', "Mode : {$labelMode}");
@@ -240,6 +241,7 @@ try {
             'api'         => 'API OAuth2',
             'json_public' => 'JSON public (sans credentials)',
             'ddg'         => 'Recherche DuckDuckGo site:reddit.com',
+            'serpapi'     => 'SerpAPI Google Search',
             default       => $modeCollecteEffectif,
         };
         journaliser($dossierJob, "Mode effectif apres fallback : {$labelModeEffectif}", 'warning');
