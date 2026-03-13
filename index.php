@@ -105,22 +105,28 @@
                     </div>
 
                     <!-- Mode de collecte -->
+                    <?php $serpApiDisponible = (getenv('SERPAPI_KEY') ?: '') !== ''; ?>
                     <div class="mt-3">
                         <label class="form-label fw-semibold">Mode de collecte</label>
                         <div class="btn-group w-100" role="group">
-                            <input type="radio" class="btn-check" name="mode_collecte" id="modeAuto" value="serpapi" checked>
+                            <input type="radio" class="btn-check" name="mode_collecte" id="modeAuto" value="serpapi"
+                                   <?= $serpApiDisponible ? 'checked' : 'disabled' ?>>
                             <label class="btn btn-outline-primary" for="modeAuto">
                                 <i class="bi bi-robot me-1"></i> Automatique (SerpAPI)
+                                <?php if (!$serpApiDisponible): ?>
+                                    <small class="d-block opacity-75">Non configuré</small>
+                                <?php endif; ?>
                             </label>
-                            <input type="radio" class="btn-check" name="mode_collecte" id="modeManuel" value="navigateur">
+                            <input type="radio" class="btn-check" name="mode_collecte" id="modeManuel" value="navigateur"
+                                   <?= $serpApiDisponible ? '' : 'checked' ?>>
                             <label class="btn btn-outline-primary" for="modeManuel">
                                 <i class="bi bi-window me-1"></i> Manuel (via navigateur)
                             </label>
                         </div>
                     </div>
 
-                    <!-- Bloc mode navigateur (masque par defaut) -->
-                    <div id="blocNavigateur" class="mt-3 d-none">
+                    <!-- Bloc mode navigateur (visible si pas de SerpAPI) -->
+                    <div id="blocNavigateur" class="mt-3 <?= $serpApiDisponible ? 'd-none' : '' ?>">
                         <div class="alert alert-info mb-3" style="font-size: 14px;">
                             <strong>1.</strong> Cliquez sur <em>Rechercher sur Reddit</em> (nouvel onglet)<br>
                             <strong>2.</strong> Dans l'onglet Reddit : <kbd>Ctrl</kbd>+<kbd>A</kbd> puis <kbd>Ctrl</kbd>+<kbd>C</kbd><br>
@@ -135,7 +141,7 @@
                         <div id="apercuCollage" class="mt-2 d-none"></div>
                     </div>
 
-                    <div class="mt-4" id="blocBtnLancer">
+                    <div class="mt-4 <?= $serpApiDisponible ? '' : 'd-none' ?>" id="blocBtnLancer">
                         <button type="submit" class="btn btn-primary py-2 px-4 fw-semibold" id="btnLancer">
                             <i class="bi bi-play-fill me-1"></i> Lancer l'analyse
                         </button>
