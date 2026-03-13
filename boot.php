@@ -77,5 +77,16 @@ function chargerEnvironnement(string $cheminFichier): void
     }
 }
 
-// Charger le fichier .env a la racine du projet
+// --- Propagation des cles API de la plateforme ---
+// La plateforme peut injecter via putenv() ou $_ENV selon la config PHP.
+// On s'assure que les cles sont disponibles dans les deux.
+foreach (['SERPAPI_KEY', 'GOOGLE_NLP_API_KEY'] as $cleEnv) {
+    $valeur = $_ENV[$cleEnv] ?? getenv($cleEnv) ?: '';
+    if ($valeur !== '') {
+        putenv("{$cleEnv}={$valeur}");
+        $_ENV[$cleEnv] = $valeur;
+    }
+}
+
+// Charger le fichier .env a la racine du projet (fallback standalone)
 chargerEnvironnement(__DIR__ . '/.env');
