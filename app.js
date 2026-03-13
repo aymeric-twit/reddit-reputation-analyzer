@@ -506,9 +506,22 @@ function initFormulaireAnalyse() {
 
     const blocNavigateur = document.getElementById('blocNavigateur');
     const blocBtnLancer = document.getElementById('blocBtnLancer');
-    const btnOuvrirReddit = document.getElementById('btnOuvrirReddit');
-    const btnCollerAnalyser = document.getElementById('btnCollerAnalyser');
+    const btnCollerDonnees = document.getElementById('btnCollerDonnees');
+    const btnPageSuivante = document.getElementById('btnPageSuivante');
+    const btnLancerNavigateur = document.getElementById('btnLancerNavigateur');
     const apercuCollage = document.getElementById('apercuCollage');
+
+    // Etat d'accumulation multi-collages
+    const collecteNav = {
+        /** @type {Array} Posts accumules (objets Reddit data.children[].data) */
+        posts: [],
+        /** @type {Set<string>} IDs Reddit deja vus (deduplication) */
+        idsVus: new Set(),
+        /** @type {string|null} Token de pagination (after) du dernier collage */
+        afterToken: null,
+        /** @type {string|null} Dernier tri utilise */
+        dernierTri: null,
+    };
 
     // --- Toggle mode de collecte ---
     document.querySelectorAll('[name="mode_collecte"]').forEach(radio => {
@@ -519,27 +532,72 @@ function initFormulaireAnalyse() {
         });
     });
 
-    // --- Ouvrir Reddit JSON dans un nouvel onglet ---
-    if (btnOuvrirReddit) {
-        btnOuvrirReddit.addEventListener('click', () => {
+    /**
+     * Construit l'URL Reddit JSON pour un tri donne.
+     */
+    function construireUrlReddit(tri, afterToken) {
+        const marque = document.getElementById('marque').value.trim();
+        const periode = document.getElementById('periode').value;
+        let url = 'https://old.reddit.com/search.json?q='
+            + encodeURIComponent('"' + marque + '"')
+            + '&sort=' + encodeURIComponent(tri)
+            + '&t=' + encodeURIComponent(periode)
+            + '&limit=100&type=link&raw_json=1';
+        if (afterToken) {
+            url += '&after=' + encodeURIComponent(afterToken);
+        }
+        return url;
+    }
+
+    /**
+     * Met a jour l'apercu avec le nombre de posts accumules.
+     */
+    function majApercu() {
+        if (!apercuCollage) return;
+        const n = collecteNav.posts.length;
+        apercuCollage.innerHTML = '<div class="alert alert-success py-2 mb-0">'
+            + '<i class="bi bi-check-circle me-1"></i> '
+            + '<strong>' + n + '</strong> posts uniques accumules'
+            + '</div>';
+        apercuCollage.classList.remove('d-none');
+
+        // Afficher le bouton lancer
+        if (btnLancerNavigateur && n > 0) {
+            btnLancerNavigateur.classList.remove('d-none');
+            btnLancerNavigateur.innerHTML = '<i class="bi bi-play-fill me-1"></i> Lancer l\'analyse (' + n + ' posts)';
+        }
+    }
+
+    // --- Boutons de recherche par tri ---
+    document.querySelectorAll('.btn-reddit-sort').forEach(btn => {
+        btn.addEventListener('click', () => {
             const marque = document.getElementById('marque').value.trim();
             if (!marque) {
                 afficherToast('Veuillez saisir un nom de marque.', 'warning');
                 return;
             }
-            const periode = document.getElementById('periode').value;
-            const url = 'https://old.reddit.com/search.json?q='
-                + encodeURIComponent('"' + marque + '"')
-                + '&sort=relevance&t=' + encodeURIComponent(periode)
-                + '&limit=100&type=link&raw_json=1';
+            const tri = btn.dataset.sort;
+            collecteNav.dernierTri = tri;
+            collecteNav.afterToken = null;
+            const url = construireUrlReddit(tri, null);
             window.open(url, '_blank');
-            if (btnCollerAnalyser) btnCollerAnalyser.disabled = false;
+            if (btnCollerDonnees) btnCollerDonnees.disabled = false;
+        });
+    });
+
+    // --- Bouton page suivante ---
+    if (btnPageSuivante) {
+        btnPageSuivante.addEventListener('click', () => {
+            if (!collecteNav.afterToken || !collecteNav.dernierTri) return;
+            const url = construireUrlReddit(collecteNav.dernierTri, collecteNav.afterToken);
+            window.open(url, '_blank');
+            if (btnCollerDonnees) btnCollerDonnees.disabled = false;
         });
     }
 
-    // --- Coller le JSON Reddit depuis le presse-papier ---
-    if (btnCollerAnalyser) {
-        btnCollerAnalyser.addEventListener('click', async () => {
+    // --- Coller et accumuler les donnees ---
+    if (btnCollerDonnees) {
+        btnCollerDonnees.addEventListener('click', async () => {
             try {
                 const texte = await navigator.clipboard.readText();
                 const donnees = JSON.parse(texte);
@@ -548,21 +606,62 @@ function initFormulaireAnalyse() {
                     throw new Error('Aucun post trouve dans le JSON');
                 }
 
-                // Apercu
-                if (apercuCollage) {
-                    apercuCollage.innerHTML = '<span class="text-success fw-semibold">'
-                        + '<i class="bi bi-check-circle me-1"></i>'
-                        + enfants.length + ' posts trouves</span>';
-                    apercuCollage.classList.remove('d-none');
+                // Accumuler avec deduplication
+                let nouveaux = 0;
+                for (const enfant of enfants) {
+                    const id = enfant.data?.name || enfant.data?.id || '';
+                    if (id && !collecteNav.idsVus.has(id)) {
+                        collecteNav.idsVus.add(id);
+                        collecteNav.posts.push(enfant);
+                        nouveaux++;
+                    }
                 }
 
-                // Lancer l'analyse avec les donnees pre-chargees
-                const formData = new FormData(formulaire);
-                formData.set('mode_collecte', 'navigateur');
-                formData.append('donnees_reddit', texte);
-                await lancerAnalyse(formData);
+                // Stocker le token de pagination pour la page suivante
+                collecteNav.afterToken = donnees.data?.after || null;
+
+                // Afficher/masquer le bouton page suivante
+                if (btnPageSuivante) {
+                    btnPageSuivante.classList.toggle('d-none', !collecteNav.afterToken);
+                    if (collecteNav.afterToken) {
+                        btnPageSuivante.innerHTML = '<i class="bi bi-arrow-right me-1"></i> Page suivante (' + collecteNav.dernierTri + ')';
+                    }
+                }
+
+                afficherToast(nouveaux + ' nouveaux posts ajoutes (' + collecteNav.posts.length + ' total)', 'success');
+                majApercu();
             } catch (erreur) {
                 afficherToast('JSON invalide ou presse-papier vide : ' + erreur.message, 'danger');
+            }
+        });
+    }
+
+    // --- Lancer l'analyse avec les donnees accumulees ---
+    if (btnLancerNavigateur) {
+        btnLancerNavigateur.addEventListener('click', async () => {
+            if (collecteNav.posts.length === 0) {
+                afficherToast('Aucun post a analyser.', 'warning');
+                return;
+            }
+
+            // Reconstituer la structure Reddit attendue par le worker
+            const donneesReddit = JSON.stringify({
+                data: { children: collecteNav.posts }
+            });
+
+            const formData = new FormData(formulaire);
+            formData.set('mode_collecte', 'navigateur');
+            formData.append('donnees_reddit', donneesReddit);
+
+            btnLancerNavigateur.disabled = true;
+            btnLancerNavigateur.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Lancement...';
+
+            try {
+                await lancerAnalyse(formData);
+            } catch (erreur) {
+                afficherToast(erreur.message, 'danger');
+                btnLancerNavigateur.disabled = false;
+                btnLancerNavigateur.innerHTML = '<i class="bi bi-play-fill me-1"></i> Lancer l\'analyse (' + collecteNav.posts.length + ' posts)';
             }
         });
     }

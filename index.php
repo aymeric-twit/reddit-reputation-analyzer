@@ -60,6 +60,8 @@
 
     <!-- ===== VUE NOUVELLE ANALYSE ===== -->
     <div id="vue-nouvelle-analyse" style="display:none;">
+        <div class="row g-4">
+        <div class="col-lg-8">
         <div class="card">
             <div class="card-header">
                 <h5 class="mb-0 fw-bold">Nouvelle analyse de réputation</h5>
@@ -128,17 +130,45 @@
                     <!-- Bloc mode navigateur (visible si pas de SerpAPI) -->
                     <div id="blocNavigateur" class="mt-3 <?= $serpApiDisponible ? 'd-none' : '' ?>">
                         <div class="alert alert-info mb-3" style="font-size: 14px;">
-                            <strong>1.</strong> Cliquez sur <em>Rechercher sur Reddit</em> (nouvel onglet)<br>
-                            <strong>2.</strong> Dans l'onglet Reddit : <kbd>Ctrl</kbd>+<kbd>A</kbd> puis <kbd>Ctrl</kbd>+<kbd>C</kbd><br>
-                            <strong>3.</strong> Revenez ici et cliquez <em>Coller et analyser</em>
+                            <strong>1.</strong> Cliquez sur un bouton ci-dessous pour ouvrir Reddit (nouvel onglet)<br>
+                            <strong>2.</strong> <kbd>Ctrl</kbd>+<kbd>A</kbd> puis <kbd>Ctrl</kbd>+<kbd>C</kbd> pour tout copier<br>
+                            <strong>3.</strong> Revenez ici, cliquez <em>Coller</em> — recommencez pour ajouter d'autres pages<br>
+                            <strong>4.</strong> Cliquez <em>Lancer l'analyse</em> quand vous avez assez de posts
                         </div>
-                        <button type="button" id="btnOuvrirReddit" class="btn btn-outline-secondary mb-2 w-100">
-                            <i class="bi bi-box-arrow-up-right me-1"></i> Rechercher sur Reddit
+
+                        <!-- Boutons de recherche Reddit par tri -->
+                        <div class="btn-group w-100 mb-2" role="group" id="boutonsRecherche">
+                            <button type="button" class="btn btn-outline-secondary btn-reddit-sort" data-sort="relevance">
+                                <i class="bi bi-search me-1"></i> Pertinence
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary btn-reddit-sort" data-sort="new">
+                                <i class="bi bi-clock me-1"></i> R&eacute;cents
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary btn-reddit-sort" data-sort="top">
+                                <i class="bi bi-arrow-up-circle me-1"></i> Top
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary btn-reddit-sort" data-sort="comments">
+                                <i class="bi bi-chat-dots me-1"></i> Comments
+                            </button>
+                        </div>
+
+                        <!-- Bouton page suivante (masque par defaut) -->
+                        <button type="button" id="btnPageSuivante" class="btn btn-outline-teal w-100 mb-2 d-none">
+                            <i class="bi bi-arrow-right me-1"></i> Page suivante
                         </button>
-                        <button type="button" id="btnCollerAnalyser" class="btn btn-primary w-100" disabled>
-                            <i class="bi bi-clipboard-check me-1"></i> Coller et analyser
+
+                        <!-- Coller les donnees -->
+                        <button type="button" id="btnCollerDonnees" class="btn btn-gold w-100 mb-2" disabled>
+                            <i class="bi bi-clipboard-check me-1"></i> Coller les donn&eacute;es copi&eacute;es
                         </button>
-                        <div id="apercuCollage" class="mt-2 d-none"></div>
+
+                        <!-- Apercu / compteur -->
+                        <div id="apercuCollage" class="d-none"></div>
+
+                        <!-- Lancer l'analyse (visible apres premier collage) -->
+                        <button type="button" id="btnLancerNavigateur" class="btn btn-primary w-100 py-2 fw-semibold d-none">
+                            <i class="bi bi-play-fill me-1"></i> Lancer l'analyse
+                        </button>
                     </div>
 
                     <div class="mt-4 <?= $serpApiDisponible ? '' : 'd-none' ?>" id="blocBtnLancer">
@@ -148,6 +178,30 @@
                     </div>
                 </form>
             </div>
+        </div>
+        </div>
+        <div class="col-lg-4" id="helpPanel">
+            <div class="config-help-panel">
+                <div class="help-title mb-2">
+                    <i class="bi bi-info-circle me-1"></i> Comment ça marche
+                </div>
+                <ul>
+                    <li><strong>Marque</strong> : ajoutez le nom de votre marque et lancez l'analyse.</li>
+                    <li><strong>Reddit</strong> : l'outil parcourt Reddit et applique une analyse de sentiment (NLP).</li>
+                    <li><strong>Insights</strong> : sujets récurrents, ton général, opportunités détectées.</li>
+                    <li><strong>Comparaison</strong> : comparez plusieurs marques côte à côte.</li>
+                    <li><strong>Dashboard</strong> : KPIs de réputation et tendances.</li>
+                </ul>
+                <hr>
+                <div class="help-title mb-2">
+                    <i class="bi bi-speedometer2 me-1"></i> Quota
+                </div>
+                <ul class="mb-0">
+                    <li>1 analyse de marque = <strong>1 crédit</strong></li>
+                </ul>
+                <span class="help-toggle-btn">▼ Voir plus</span>
+            </div>
+        </div>
         </div>
     </div>
 
