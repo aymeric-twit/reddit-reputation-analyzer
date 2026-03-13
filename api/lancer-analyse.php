@@ -62,17 +62,30 @@ try {
     }
 
     $marque = trim((string) ($donnees['marque'] ?? ''));
+    $marqueIdParam = trim((string) ($donnees['marque_id'] ?? ''));
     $periode = trim((string) ($donnees['periode'] ?? 'month'));
     $limite = (int) ($donnees['limite'] ?? 500);
     $subredditsChaine = trim((string) ($donnees['subreddits'] ?? ''));
     $motsClesChaine = trim((string) ($donnees['mots_cles'] ?? ''));
     $marquesConcurrentes = trim((string) ($donnees['marques_concurrentes'] ?? ''));
 
+    // --- Si marque_id fourni (relance), recuperer le nom de la marque ---
+    if ($marque === '' && $marqueIdParam !== '') {
+        $bd = BaseDonnees::instance();
+        $marqueExistante = $bd->selectionnerUn(
+            'SELECT id, nom FROM marques WHERE id = ?',
+            [(int) $marqueIdParam]
+        );
+        if ($marqueExistante !== null) {
+            $marque = $marqueExistante['nom'];
+        }
+    }
+
     // --- Validation ---
     if ($marque === '') {
         http_response_code(422);
         echo json_encode([
-            'erreur' => 'Le parametre "marque" est requis.',
+            'erreur' => 'Le parametre "marque" ou "marque_id" est requis.',
         ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
         exit;
     }
@@ -104,7 +117,9 @@ try {
         : [];
 
     // --- Creation ou recuperation de la marque ---
-    $bd = BaseDonnees::instance();
+    if (!isset($bd)) {
+        $bd = BaseDonnees::instance();
+    }
     $slug = slugifier($marque);
 
     $marqueExistante = $bd->selectionnerUn(
