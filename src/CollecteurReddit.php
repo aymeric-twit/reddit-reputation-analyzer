@@ -22,10 +22,20 @@ class CollecteurReddit
     private float $derniereRequete = 0.0;
     private string $mode;
 
+    /** Chemin du fichier cookie jar pour maintenir la session navigateur */
+    private string $cheminCookies;
+
+    /** Indique si la session navigateur a ete initialisee (cookies Reddit obtenus) */
+    private bool $sessionInitialisee = false;
+
     private const string URL_AUTHENTIFICATION = 'https://www.reddit.com/api/v1/access_token';
     private const string URL_API = 'https://oauth.reddit.com';
     private const string URL_REDDIT_PUBLIC = 'https://www.reddit.com';
     private const string URL_DDG = 'https://html.duckduckgo.com/html/';
+
+    /** Version Chrome emulee — a mettre a jour periodiquement */
+    private const string CHROME_VERSION = '131.0.0.0';
+    private const string USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
     /** @var callable|null Callback de progression */
     private $rappelProgression = null;
@@ -45,8 +55,14 @@ class CollecteurReddit
     {
         $this->clientId = $_ENV['REDDIT_CLIENT_ID'] ?? getenv('REDDIT_CLIENT_ID') ?: null;
         $this->clientSecret = $_ENV['REDDIT_CLIENT_SECRET'] ?? getenv('REDDIT_CLIENT_SECRET') ?: null;
-        $this->userAgent = $_ENV['REDDIT_USER_AGENT'] ?? getenv('REDDIT_USER_AGENT')
-            ?: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+        $this->userAgent = self::USER_AGENT;
+
+        // Cookie jar dans le dossier data/ du plugin (persistant entre requetes)
+        $dossierData = __DIR__ . '/../data';
+        if (!is_dir($dossierData)) {
+            @mkdir($dossierData, 0755, true);
+        }
+        $this->cheminCookies = $dossierData . '/cookies_reddit.txt';
 
         // Detection automatique du mode
         if ($modeSouhaite !== null) {
@@ -54,7 +70,6 @@ class CollecteurReddit
         } elseif (!empty($this->clientId) && !empty($this->clientSecret)) {
             $this->mode = 'api';
         } else {
-            // Tester si Reddit JSON public fonctionne
             $this->mode = 'json_public';
         }
     }
@@ -68,6 +83,145 @@ class CollecteurReddit
     }
 
     /**
+     * Initialise une session navigateur en visitant reddit.com pour obtenir les cookies.
+     *
+     * Reddit pose des cookies (session_tracker, csv, edgebucket, etc.) lors de la
+     * premiere visite. Sans ces cookies, les requetes .json renvoient 403.
+     */
+    private function initialiserSessionNavigateur(): void
+    {
+        if ($this->sessionInitialisee) {
+            return;
+        }
+
+        // Si le cookie jar existe et est recent (< 30 min), reutiliser
+        if (file_exists($this->cheminCookies) && (time() - filemtime($this->cheminCookies)) < 1800) {
+            $this->sessionInitialisee = true;
+            $this->journaliserCollecte("Reutilisation du cookie jar existant");
+            return;
+        }
+
+        $this->journaliserCollecte("Initialisation session navigateur (visite reddit.com)");
+
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL            => 'https://www.reddit.com/',
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS      => 5,
+            CURLOPT_TIMEOUT        => 30,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_COOKIEJAR      => $this->cheminCookies,
+            CURLOPT_COOKIEFILE     => $this->cheminCookies,
+            CURLOPT_ENCODING       => 'gzip, deflate, br',
+            CURLOPT_HTTPHEADER     => $this->headersNavigateurHtml(),
+            CURLOPT_SSLVERSION     => CURL_SSLVERSION_TLSv1_2,
+            CURLOPT_HTTP_VERSION   => CURL_HTTP_VERSION_2_0,
+            CURLOPT_USERAGENT      => $this->userAgent,
+        ]);
+
+        $reponse = curl_exec($ch);
+        $codeHttp = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        $this->derniereRequete = microtime(true);
+        $this->sessionInitialisee = true;
+
+        if ($reponse !== false && $codeHttp === 200) {
+            $this->journaliserCollecte("Session initialisee (cookies obtenus)", 'success');
+        } else {
+            $this->journaliserCollecte("Initialisation session : HTTP {$codeHttp}", 'warning');
+        }
+    }
+
+    /**
+     * Headers Chrome complets pour les requetes HTML (initialisation session).
+     *
+     * @return array<string>
+     */
+    private function headersNavigateurHtml(): array
+    {
+        return [
+            'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language: en-US,en;q=0.9,fr;q=0.8',
+            'Cache-Control: max-age=0',
+            'Sec-Ch-Ua: "Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+            'Sec-Ch-Ua-Mobile: ?0',
+            'Sec-Ch-Ua-Platform: "Windows"',
+            'Sec-Fetch-Dest: document',
+            'Sec-Fetch-Mode: navigate',
+            'Sec-Fetch-Site: none',
+            'Sec-Fetch-User: ?1',
+            'Upgrade-Insecure-Requests: 1',
+        ];
+    }
+
+    /**
+     * Headers Chrome complets pour les requetes JSON (API publique Reddit).
+     *
+     * @return array<string>
+     */
+    private function headersNavigateurJson(): array
+    {
+        return [
+            'Accept: application/json, text/plain, */*',
+            'Accept-Language: en-US,en;q=0.9,fr;q=0.8',
+            'Sec-Ch-Ua: "Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+            'Sec-Ch-Ua-Mobile: ?0',
+            'Sec-Ch-Ua-Platform: "Windows"',
+            'Sec-Fetch-Dest: empty',
+            'Sec-Fetch-Mode: cors',
+            'Sec-Fetch-Site: same-origin',
+            'Referer: https://www.reddit.com/',
+        ];
+    }
+
+    /**
+     * Execute une requete cURL avec emulation navigateur complete.
+     *
+     * @param array<string> $headers Headers HTTP
+     * @return array{corps: string|false, code_http: int} Reponse et code HTTP
+     */
+    private function requeteCurl(
+        string $url,
+        array $headers,
+        string $methode = 'GET',
+        ?string $corpsPost = null,
+    ): array {
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL            => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS      => 5,
+            CURLOPT_TIMEOUT        => 30,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_COOKIEJAR      => $this->cheminCookies,
+            CURLOPT_COOKIEFILE     => $this->cheminCookies,
+            CURLOPT_ENCODING       => 'gzip, deflate, br',
+            CURLOPT_HTTPHEADER     => $headers,
+            CURLOPT_SSLVERSION     => CURL_SSLVERSION_TLSv1_2,
+            CURLOPT_HTTP_VERSION   => CURL_HTTP_VERSION_2_0,
+            CURLOPT_USERAGENT      => $this->userAgent,
+        ]);
+
+        if ($methode === 'POST') {
+            curl_setopt($ch, CURLOPT_POST, true);
+            if ($corpsPost !== null) {
+                curl_setopt($ch, CURLOPT_POSTFIELDS, $corpsPost);
+            }
+        }
+
+        $corps = curl_exec($ch);
+        $codeHttp = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        $this->derniereRequete = microtime(true);
+
+        return ['corps' => $corps, 'code_http' => $codeHttp];
+    }
+
+    /**
      * Authentification OAuth2 (mode API uniquement).
      *
      * @throws RuntimeException En cas d'echec
@@ -75,38 +229,29 @@ class CollecteurReddit
     public function authentifier(): void
     {
         if ($this->mode !== 'api') {
-            return; // Pas necessaire en mode public ou DDG
+            return;
         }
 
         $this->respecterRateLimit(1.0);
 
-        $contexte = stream_context_create([
-            'http' => [
-                'method'  => 'POST',
-                'header'  => implode("\r\n", [
-                    'Content-Type: application/x-www-form-urlencoded',
-                    'Authorization: Basic ' . base64_encode("{$this->clientId}:{$this->clientSecret}"),
-                    "User-Agent: {$this->userAgent}",
-                ]),
-                'content' => http_build_query(['grant_type' => 'client_credentials']),
-                'timeout' => 30,
-                'ignore_errors' => true,
+        $resultat = $this->requeteCurl(
+            self::URL_AUTHENTIFICATION,
+            [
+                'Content-Type: application/x-www-form-urlencoded',
+                'Authorization: Basic ' . base64_encode("{$this->clientId}:{$this->clientSecret}"),
             ],
-        ]);
+            'POST',
+            http_build_query(['grant_type' => 'client_credentials']),
+        );
 
-        $reponse = @file_get_contents(self::URL_AUTHENTIFICATION, false, $contexte);
-        $this->derniereRequete = microtime(true);
-
-        if ($reponse === false) {
-            // Basculer en mode public
+        if ($resultat['corps'] === false) {
             $this->mode = 'json_public';
             return;
         }
 
-        $donnees = json_decode($reponse, true, 512, JSON_THROW_ON_ERROR);
+        $donnees = json_decode($resultat['corps'], true, 512, JSON_THROW_ON_ERROR);
 
         if (isset($donnees['error']) || !isset($donnees['access_token'])) {
-            // Basculer en mode public
             $this->mode = 'json_public';
             return;
         }
@@ -341,26 +486,16 @@ class CollecteurReddit
             $url .= '?' . http_build_query($params);
         }
 
-        $contexte = stream_context_create([
-            'http' => [
-                'method'  => 'GET',
-                'header'  => implode("\r\n", [
-                    "Authorization: Bearer {$this->accessToken}",
-                    "User-Agent: {$this->userAgent}",
-                ]),
-                'timeout' => 30,
-                'ignore_errors' => true,
-            ],
+        $resultat = $this->requeteCurl($url, [
+            "Authorization: Bearer {$this->accessToken}",
+            'Accept: application/json',
         ]);
 
-        $reponse = @file_get_contents($url, false, $contexte);
-        $this->derniereRequete = microtime(true);
-
-        if ($reponse === false) {
+        if ($resultat['corps'] === false) {
             return [];
         }
 
-        return json_decode($reponse, true, 512, JSON_THROW_ON_ERROR) ?? [];
+        return json_decode($resultat['corps'], true, 512, JSON_THROW_ON_ERROR) ?? [];
     }
 
     private function commentairesViaApi(string $id, int $limite): array
@@ -373,26 +508,16 @@ class CollecteurReddit
             'depth' => 10,
         ]);
 
-        $contexte = stream_context_create([
-            'http' => [
-                'method'  => 'GET',
-                'header'  => implode("\r\n", [
-                    "Authorization: Bearer {$this->accessToken}",
-                    "User-Agent: {$this->userAgent}",
-                ]),
-                'timeout' => 30,
-                'ignore_errors' => true,
-            ],
+        $resultat = $this->requeteCurl($url, [
+            "Authorization: Bearer {$this->accessToken}",
+            'Accept: application/json',
         ]);
 
-        $reponse = @file_get_contents($url, false, $contexte);
-        $this->derniereRequete = microtime(true);
-
-        if ($reponse === false) {
+        if ($resultat['corps'] === false) {
             return [];
         }
 
-        $donnees = json_decode($reponse, true, 512, JSON_THROW_ON_ERROR);
+        $donnees = json_decode($resultat['corps'], true, 512, JSON_THROW_ON_ERROR);
         $commentaires = [];
         $listeCommentaires = $donnees[1]['data']['children'] ?? [];
         $this->extraireCommentairesRecursif($listeCommentaires, $commentaires, $limite);
@@ -484,6 +609,9 @@ class CollecteurReddit
 
     private function requeteJsonPublic(string $endpoint, array $params = []): ?array
     {
+        // Initialiser la session navigateur (cookies) avant la premiere requete
+        $this->initialiserSessionNavigateur();
+
         // Rate limit pour le mode public (~6 req/min)
         $this->respecterRateLimit(10.0);
 
@@ -494,30 +622,9 @@ class CollecteurReddit
 
         $this->journaliserCollecte("Requete JSON public : {$url}");
 
-        $contexte = stream_context_create([
-            'http' => [
-                'method'  => 'GET',
-                'header'  => implode("\r\n", [
-                    "User-Agent: {$this->userAgent}",
-                    'Accept: application/json',
-                ]),
-                'timeout' => 30,
-                'ignore_errors' => true,
-            ],
-        ]);
-
-        $reponse = @file_get_contents($url, false, $contexte);
-        $this->derniereRequete = microtime(true);
-
-        // Extraire le code HTTP depuis les headers de reponse
-        $codeHttp = 0;
-        if (isset($http_response_header) && is_array($http_response_header)) {
-            foreach ($http_response_header as $header) {
-                if (preg_match('#^HTTP/\S+\s+(\d{3})#', $header, $m)) {
-                    $codeHttp = (int) $m[1];
-                }
-            }
-        }
+        $resultat = $this->requeteCurl($url, $this->headersNavigateurJson());
+        $codeHttp = $resultat['code_http'];
+        $reponse = $resultat['corps'];
 
         if ($reponse === false) {
             $this->journaliserCollecte("Requete echouee (pas de reponse, HTTP {$codeHttp})", 'warning');
@@ -527,6 +634,14 @@ class CollecteurReddit
         // Verifier si on a ete bloque (429, 403, page HTML au lieu de JSON)
         if (str_starts_with(trim($reponse), '<') || str_starts_with(trim($reponse), '<!')) {
             $this->journaliserCollecte("Reddit a renvoye du HTML (HTTP {$codeHttp}) — probablement bloque", 'warning');
+
+            // Si 403, invalider les cookies pour forcer une nouvelle session
+            if ($codeHttp === 403) {
+                @unlink($this->cheminCookies);
+                $this->sessionInitialisee = false;
+                $this->journaliserCollecte("Cookie jar supprime, nouvelle session au prochain essai");
+            }
+
             return null;
         }
 
@@ -731,44 +846,26 @@ class CollecteurReddit
      */
     private function requeteHttp(string $url, string $methode = 'GET', ?array $postData = null): ?string
     {
-        $headers = [
-            "User-Agent: {$this->userAgent}",
-            'Accept: text/html,application/xhtml+xml',
-            'Accept-Language: en-US,en;q=0.9,fr;q=0.8',
-        ];
+        $headers = $this->headersNavigateurHtml();
 
-        $options = [
-            'http' => [
-                'method'        => $methode,
-                'header'        => implode("\r\n", $headers),
-                'timeout'       => 30,
-                'ignore_errors' => true,
-            ],
-        ];
-
+        $corpsPost = null;
         if ($methode === 'POST' && $postData !== null) {
-            $options['http']['header'] .= "\r\nContent-Type: application/x-www-form-urlencoded";
-            $options['http']['content'] = http_build_query($postData);
+            $headers[] = 'Content-Type: application/x-www-form-urlencoded';
+            $corpsPost = http_build_query($postData);
         }
 
-        $contexte = stream_context_create($options);
-        $reponse = @file_get_contents($url, false, $contexte);
-        $this->derniereRequete = microtime(true);
+        $resultat = $this->requeteCurl($url, $headers, $methode, $corpsPost);
 
-        if ($reponse === false) {
+        if ($resultat['corps'] === false) {
             return null;
         }
 
         // Verifier si DDG renvoie un challenge bot (HTTP 202)
-        if (isset($http_response_header) && is_array($http_response_header)) {
-            foreach ($http_response_header as $header) {
-                if (preg_match('#^HTTP/\S+\s+202#', $header)) {
-                    return null; // Bot challenge, on arrete
-                }
-            }
+        if ($resultat['code_http'] === 202) {
+            return null;
         }
 
-        return $reponse;
+        return $resultat['corps'];
     }
 
     /**
@@ -778,6 +875,9 @@ class CollecteurReddit
      */
     private function extrairePostDepuisUrl(string $url): ?array
     {
+        // Initialiser la session navigateur si necessaire
+        $this->initialiserSessionNavigateur();
+
         // Nettoyer l'URL et ajouter .json
         $urlNettoyee = rtrim(preg_replace('#\?.*$#', '', $url), '/');
         $urlJson = $urlNettoyee . '.json?raw_json=1&limit=0';
@@ -785,28 +885,13 @@ class CollecteurReddit
         // Rate limit modere pour les requetes individuelles de posts
         $this->respecterRateLimit(5.0);
 
-        $contexte = stream_context_create([
-            'http' => [
-                'method'  => 'GET',
-                'header'  => implode("\r\n", [
-                    "User-Agent: {$this->userAgent}",
-                    'Accept: application/json',
-                ]),
-                'timeout' => 15,
-                'ignore_errors' => true,
-                'follow_location' => true,
-                'max_redirects' => 3,
-            ],
-        ]);
+        $resultat = $this->requeteCurl($urlJson, $this->headersNavigateurJson());
 
-        $reponse = @file_get_contents($urlJson, false, $contexte);
-        $this->derniereRequete = microtime(true);
-
-        if ($reponse === false || str_starts_with(trim($reponse), '<')) {
+        if ($resultat['corps'] === false || str_starts_with(trim($resultat['corps']), '<')) {
             return null;
         }
 
-        $donnees = json_decode($reponse, true, 512);
+        $donnees = json_decode($resultat['corps'], true, 512);
         if ($donnees === null || !isset($donnees[0]['data']['children'][0])) {
             return null;
         }
