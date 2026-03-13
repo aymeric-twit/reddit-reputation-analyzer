@@ -9,23 +9,84 @@
     "quota_mode": "api_call",
     "default_quota": 500,
     "display_mode": "embedded",
-    "env_keys": ["REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET", "GOOGLE_NLP_API_KEY", "SERPAPI_KEY"],
+    "env_keys": [
+        "GOOGLE_NLP_API_KEY",
+        "SERPAPI_KEY"
+    ],
     "api_doc_url": "https://www.reddit.com/dev/api/",
     "languages": [],
+    "api_credits_period": "mensuel",
+    "api_credits_default": 0,
     "routes": [
-        {"path": "resultats.php", "method": "GET", "type": "page"},
-        {"path": "comparaison.php", "method": "GET", "type": "page"},
-        {"path": "progress.php", "method": "GET", "type": "ajax"},
-        {"path": "worker.php", "method": "GET", "type": "ajax"},
-        {"path": "api/lancer-analyse.php", "method": "POST", "type": "ajax"},
-        {"path": "api/marques.php", "method": "GET", "type": "ajax"},
-        {"path": "api/resultats.php", "method": "GET", "type": "ajax"},
-        {"path": "api/historique.php", "method": "GET", "type": "ajax"},
-        {"path": "api/comparaison.php", "method": "GET", "type": "ajax"},
-        {"path": "api/parametres.php", "method": "GET", "type": "ajax"},
-        {"path": "api/parametres.php", "method": "POST", "type": "ajax"},
-        {"path": "api/export.php", "method": "GET", "type": "ajax"},
-        {"path": "api/supprimer-analyse.php", "method": "POST", "type": "ajax"},
-        {"path": "api/supprimer-marque.php", "method": "POST", "type": "ajax"}
+        {
+            "path": "resultats.php",
+            "method": "GET",
+            "type": "page"
+        },
+        {
+            "path": "comparaison.php",
+            "method": "GET",
+            "type": "page"
+        },
+        {
+            "path": "progress.php",
+            "method": "GET",
+            "type": "ajax"
+        },
+        {
+            "path": "worker.php",
+            "method": "GET",
+            "type": "ajax"
+        },
+        {
+            "path": "api/lancer-analyse.php",
+            "method": "POST",
+            "type": "ajax"
+        },
+        {
+            "path": "api/marques.php",
+            "method": "GET",
+            "type": "ajax"
+        },
+        {
+            "path": "api/resultats.php",
+            "method": "GET",
+            "type": "ajax"
+        },
+        {
+            "path": "api/historique.php",
+            "method": "GET",
+            "type": "ajax"
+        },
+        {
+            "path": "api/comparaison.php",
+            "method": "GET",
+            "type": "ajax"
+        },
+        {
+            "path": "api/parametres.php",
+            "method": "GET",
+            "type": "ajax"
+        },
+        {
+            "path": "api/parametres.php",
+            "method": "POST",
+            "type": "ajax"
+        },
+        {
+            "path": "api/export.php",
+            "method": "GET",
+            "type": "ajax"
+        },
+        {
+            "path": "api/supprimer-analyse.php",
+            "method": "POST",
+            "type": "ajax"
+        },
+        {
+            "path": "api/supprimer-marque.php",
+            "method": "POST",
+            "type": "ajax"
+        }
     ]
 }

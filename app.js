@@ -487,6 +487,70 @@ function initFormulaireAnalyse() {
     const formulaire = document.getElementById('formulaireAnalyse');
     if (!formulaire) return;
 
+    const blocNavigateur = document.getElementById('blocNavigateur');
+    const blocBtnLancer = document.getElementById('blocBtnLancer');
+    const btnOuvrirReddit = document.getElementById('btnOuvrirReddit');
+    const btnCollerAnalyser = document.getElementById('btnCollerAnalyser');
+    const apercuCollage = document.getElementById('apercuCollage');
+
+    // --- Toggle mode de collecte ---
+    document.querySelectorAll('[name="mode_collecte"]').forEach(radio => {
+        radio.addEventListener('change', () => {
+            const estManuel = radio.value === 'navigateur' && radio.checked;
+            if (blocNavigateur) blocNavigateur.classList.toggle('d-none', !estManuel);
+            if (blocBtnLancer) blocBtnLancer.classList.toggle('d-none', estManuel);
+        });
+    });
+
+    // --- Ouvrir Reddit JSON dans un nouvel onglet ---
+    if (btnOuvrirReddit) {
+        btnOuvrirReddit.addEventListener('click', () => {
+            const marque = document.getElementById('marque').value.trim();
+            if (!marque) {
+                afficherToast('Veuillez saisir un nom de marque.', 'warning');
+                return;
+            }
+            const periode = document.getElementById('periode').value;
+            const url = 'https://old.reddit.com/search.json?q='
+                + encodeURIComponent('"' + marque + '"')
+                + '&sort=relevance&t=' + encodeURIComponent(periode)
+                + '&limit=100&type=link&raw_json=1';
+            window.open(url, '_blank');
+            if (btnCollerAnalyser) btnCollerAnalyser.disabled = false;
+        });
+    }
+
+    // --- Coller le JSON Reddit depuis le presse-papier ---
+    if (btnCollerAnalyser) {
+        btnCollerAnalyser.addEventListener('click', async () => {
+            try {
+                const texte = await navigator.clipboard.readText();
+                const donnees = JSON.parse(texte);
+                const enfants = donnees?.data?.children ?? [];
+                if (enfants.length === 0) {
+                    throw new Error('Aucun post trouve dans le JSON');
+                }
+
+                // Apercu
+                if (apercuCollage) {
+                    apercuCollage.innerHTML = '<span class="text-success fw-semibold">'
+                        + '<i class="bi bi-check-circle me-1"></i>'
+                        + enfants.length + ' posts trouves</span>';
+                    apercuCollage.classList.remove('d-none');
+                }
+
+                // Lancer l'analyse avec les donnees pre-chargees
+                const formData = new FormData(formulaire);
+                formData.set('mode_collecte', 'navigateur');
+                formData.append('donnees_reddit', texte);
+                await lancerAnalyse(formData);
+            } catch (erreur) {
+                afficherToast('JSON invalide ou presse-papier vide : ' + erreur.message, 'danger');
+            }
+        });
+    }
+
+    // --- Soumission classique (mode SerpAPI) ---
     formulaire.addEventListener('submit', async (e) => {
         e.preventDefault();
 

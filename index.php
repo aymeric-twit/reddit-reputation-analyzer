@@ -104,7 +104,38 @@
                         </div>
                     </div>
 
-                    <div class="mt-4">
+                    <!-- Mode de collecte -->
+                    <div class="mt-3">
+                        <label class="form-label fw-semibold">Mode de collecte</label>
+                        <div class="btn-group w-100" role="group">
+                            <input type="radio" class="btn-check" name="mode_collecte" id="modeAuto" value="serpapi" checked>
+                            <label class="btn btn-outline-primary" for="modeAuto">
+                                <i class="bi bi-robot me-1"></i> Automatique (SerpAPI)
+                            </label>
+                            <input type="radio" class="btn-check" name="mode_collecte" id="modeManuel" value="navigateur">
+                            <label class="btn btn-outline-primary" for="modeManuel">
+                                <i class="bi bi-window me-1"></i> Manuel (via navigateur)
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Bloc mode navigateur (masque par defaut) -->
+                    <div id="blocNavigateur" class="mt-3 d-none">
+                        <div class="alert alert-info mb-3" style="font-size: 14px;">
+                            <strong>1.</strong> Cliquez sur <em>Rechercher sur Reddit</em> (nouvel onglet)<br>
+                            <strong>2.</strong> Dans l'onglet Reddit : <kbd>Ctrl</kbd>+<kbd>A</kbd> puis <kbd>Ctrl</kbd>+<kbd>C</kbd><br>
+                            <strong>3.</strong> Revenez ici et cliquez <em>Coller et analyser</em>
+                        </div>
+                        <button type="button" id="btnOuvrirReddit" class="btn btn-outline-secondary mb-2 w-100">
+                            <i class="bi bi-box-arrow-up-right me-1"></i> Rechercher sur Reddit
+                        </button>
+                        <button type="button" id="btnCollerAnalyser" class="btn btn-primary w-100" disabled>
+                            <i class="bi bi-clipboard-check me-1"></i> Coller et analyser
+                        </button>
+                        <div id="apercuCollage" class="mt-2 d-none"></div>
+                    </div>
+
+                    <div class="mt-4" id="blocBtnLancer">
                         <button type="submit" class="btn btn-primary py-2 px-4 fw-semibold" id="btnLancer">
                             <i class="bi bi-play-fill me-1"></i> Lancer l'analyse
                         </button>

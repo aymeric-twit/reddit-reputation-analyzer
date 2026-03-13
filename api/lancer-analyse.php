@@ -158,16 +158,26 @@ try {
         mkdir($dossierJob, 0755, true);
     }
 
+    // Mode de collecte et donnees navigateur
+    $modeCollecte = trim((string) ($donnees['mode_collecte'] ?? 'serpapi'));
+    $donneesReddit = $donnees['donnees_reddit'] ?? '';
+
     // Ecriture de la configuration du job
     $configJob = [
-        'marque'     => $marque,
-        'marque_id'  => $marqueId,
-        'analyse_id' => $analyseId,
-        'periode'    => $periode,
-        'limite'     => $limite,
-        'subreddits' => $subreddits,
-        'mots_cles'  => $motsCles,
+        'marque'         => $marque,
+        'marque_id'      => $marqueId,
+        'analyse_id'     => $analyseId,
+        'periode'        => $periode,
+        'limite'         => $limite,
+        'subreddits'     => $subreddits,
+        'mots_cles'      => $motsCles,
+        'mode_collecte'  => $modeCollecte,
     ];
+
+    // En mode navigateur, stocker le JSON Reddit pre-charge
+    if ($modeCollecte === 'navigateur' && $donneesReddit !== '') {
+        $configJob['donnees_reddit'] = $donneesReddit;
+    }
 
     file_put_contents(
         $dossierJob . '/config.json',

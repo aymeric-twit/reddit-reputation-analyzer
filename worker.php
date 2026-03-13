@@ -174,8 +174,8 @@ try {
         'date_lancement'  => date('Y-m-d H:i:s'),
     ], 'id = ?', [$analyseId]);
 
-    // --- Etape 1 : Connexion Reddit (5%) ---
-    mettreAJourProgression($dossierJob, 5, 'Connexion a Reddit...', 'Detection du mode de collecte');
+    // --- Etape 1 : Initialisation (5%) ---
+    mettreAJourProgression($dossierJob, 5, 'Initialisation...', 'Detection du mode de collecte');
     journaliser($dossierJob, "Demarrage de l'analyse pour \"{$marque}\"");
     journaliser($dossierJob, "Periode : {$periode} | Limite : {$limite} posts");
     if (!empty($subreddits)) {
@@ -185,43 +185,69 @@ try {
         journaliser($dossierJob, 'Mots-cles : ' . implode(', ', $motsCles));
     }
 
-    $collecteur = new CollecteurReddit();
-    $collecteur->definirRappelJournal(function (string $message, string $niveau = 'info') use ($dossierJob): void {
-        journaliser($dossierJob, $message, $niveau);
-    });
-    $collecteur->authentifier();
-    $modeCollecte = $collecteur->obtenirMode();
-
-    $labelMode = match ($modeCollecte) {
-        'api'         => 'API OAuth2',
-        'json_public' => 'JSON public (sans credentials)',
-        'ddg'         => 'Recherche DuckDuckGo site:reddit.com',
-        'serpapi'     => 'SerpAPI Google Search',
-        default       => $modeCollecte,
-    };
-    mettreAJourProgression($dossierJob, 8, 'Connexion a Reddit...', "Mode : {$labelMode}");
-    journaliser($dossierJob, "Mode de collecte : {$labelMode}", 'success');
+    $modeCollecte = $config['mode_collecte'] ?? 'serpapi';
 
     // --- Etape 2 : Collecte des publications (10-40%) ---
     mettreAJourProgression($dossierJob, 10, 'Collecte des publications...', '0/' . $limite . ' publications');
 
-    $publications = $collecteur->rechercherPublications(
-        marque: $marque,
-        periode: $periode,
-        limite: $limite,
-        subreddits: $subreddits,
-        motsCles: $motsCles,
-        rappelProgression: function (int $collectees) use ($dossierJob, $limite): void {
-            $pourcentage = 10 + (int) (($collectees / max($limite, 1)) * 30);
-            $pourcentage = min($pourcentage, 40);
-            mettreAJourProgression(
-                $dossierJob,
-                $pourcentage,
-                'Collecte des publications...',
-                "{$collectees}/{$limite} publications"
-            );
+    if ($modeCollecte === 'navigateur' && !empty($config['donnees_reddit'])) {
+        // Mode navigateur : parser le JSON Reddit colle par l'utilisateur
+        journaliser($dossierJob, "Mode de collecte : Navigateur (donnees pre-chargees)", 'success');
+        $donneesReddit = json_decode($config['donnees_reddit'], true, 512);
+        $enfants = $donneesReddit['data']['children'] ?? [];
+
+        $publications = [];
+        foreach ($enfants as $enfant) {
+            $d = $enfant['data'] ?? [];
+            if (empty($d)) {
+                continue;
+            }
+            $publications[] = [
+                'reddit_id'        => $d['name'] ?? ('t3_' . ($d['id'] ?? '')),
+                'titre'            => $d['title'] ?? '',
+                'contenu'          => $d['selftext'] ?? '',
+                'url'              => isset($d['permalink'])
+                    ? 'https://www.reddit.com' . $d['permalink']
+                    : '',
+                'subreddit'        => $d['subreddit'] ?? '',
+                'auteur'           => $d['author'] ?? '[supprime]',
+                'date_publication' => isset($d['created_utc'])
+                    ? date('Y-m-d H:i:s', (int) $d['created_utc'])
+                    : null,
+                'score'            => (int) ($d['score'] ?? 0),
+                'ratio_upvote'     => (float) ($d['upvote_ratio'] ?? 0.0),
+                'nb_commentaires'  => (int) ($d['num_comments'] ?? 0),
+                'awards'           => (int) ($d['total_awards_received'] ?? 0),
+                'type'             => 'post',
+            ];
         }
-    );
+        journaliser($dossierJob, count($publications) . " publications parsees depuis le JSON navigateur", 'success');
+    } else {
+        // Mode SerpAPI : collecte automatique
+        journaliser($dossierJob, "Mode de collecte : SerpAPI Google Search", 'success');
+        $collecteur = new CollecteurReddit();
+        $collecteur->definirRappelJournal(function (string $message, string $niveau = 'info') use ($dossierJob): void {
+            journaliser($dossierJob, $message, $niveau);
+        });
+
+        $publications = $collecteur->rechercherPublications(
+            marque: $marque,
+            periode: $periode,
+            limite: $limite,
+            subreddits: $subreddits,
+            motsCles: $motsCles,
+            rappelProgression: function (int $collectees) use ($dossierJob, $limite): void {
+                $pourcentage = 10 + (int) (($collectees / max($limite, 1)) * 30);
+                $pourcentage = min($pourcentage, 40);
+                mettreAJourProgression(
+                    $dossierJob,
+                    $pourcentage,
+                    'Collecte des publications...',
+                    "{$collectees}/{$limite} publications"
+                );
+            }
+        );
+    }
 
     // Dedoublonnage par reddit_id
     $nbAvantDedoublonnage = count($publications);
@@ -234,19 +260,6 @@ try {
     }
     $publications = array_values($publicationsUniques);
     $nbApres = count($publications);
-    // Le mode peut avoir change (fallback JSON public → DuckDuckGo)
-    $modeCollecteEffectif = $collecteur->obtenirMode();
-    if ($modeCollecteEffectif !== $modeCollecte) {
-        $labelModeEffectif = match ($modeCollecteEffectif) {
-            'api'         => 'API OAuth2',
-            'json_public' => 'JSON public (sans credentials)',
-            'ddg'         => 'Recherche DuckDuckGo site:reddit.com',
-            'serpapi'     => 'SerpAPI Google Search',
-            default       => $modeCollecteEffectif,
-        };
-        journaliser($dossierJob, "Mode effectif apres fallback : {$labelModeEffectif}", 'warning');
-        $modeCollecte = $modeCollecteEffectif;
-    }
 
     journaliser($dossierJob, "{$nbApres} publications collectees" . ($nbAvantDedoublonnage > $nbApres ? " ({$nbAvantDedoublonnage} avant dedoublonnage)" : ''), 'success');
 
@@ -267,38 +280,12 @@ try {
         journaliser($dossierJob, "  r/{$sub} : {$nb} post(s)");
     }
 
-    // --- Etape 3 : Collecte des commentaires (40-60%) ---
-    mettreAJourProgression($dossierJob, 40, 'Collecte des commentaires...', 'Selection des publications principales');
-
-    // Trier par score et prendre les top publications pour les commentaires
-    usort($publications, fn(array $a, array $b): int => ($b['score'] ?? 0) <=> ($a['score'] ?? 0));
-    $nbTopPubs = min(20, count($publications)); // Limiter pour eviter trop de requetes
-    if ($modeCollecte === 'ddg') {
-        $nbTopPubs = min(10, count($publications)); // Encore moins en mode DDG
-    }
-    $publicationsTop = array_slice($publications, 0, $nbTopPubs);
+    // --- Etape 3 : Commentaires (40-60%) ---
+    // Les commentaires ne sont pas accessibles via SerpAPI ni via le mode navigateur (JSON search uniquement).
+    // L'analyse de sentiment se base sur les titres + contenus des publications.
+    mettreAJourProgression($dossierJob, 40, 'Traitement des publications...', count($publications) . ' publications');
     $commentaires = [];
-
-    foreach ($publicationsTop as $index => $pub) {
-        $pourcentage = 40 + (int) (($index / max(count($publicationsTop), 1)) * 20);
-        mettreAJourProgression(
-            $dossierJob,
-            min($pourcentage, 60),
-            'Collecte des commentaires...',
-            ($index + 1) . '/' . count($publicationsTop) . ' publications traitees'
-        );
-
-        $redditId = $pub['reddit_id'] ?? '';
-
-        if ($redditId !== '') {
-            $comms = $collecteur->recupererCommentaires($redditId);
-            $commentaires = array_merge($commentaires, $comms);
-            $titrePub = mb_substr($pub['titre'] ?? '(sans titre)', 0, 60);
-            journaliser($dossierJob, "  #{$redditId} — {$titrePub} → " . count($comms) . ' commentaires');
-        }
-    }
-
-    journaliser($dossierJob, count($commentaires) . ' commentaires collectes au total', 'success');
+    journaliser($dossierJob, '0 commentaires (non disponibles en mode ' . $modeCollecte . ')');
 
     // --- Etape 4 : Analyse de sentiment (60-75%) ---
     mettreAJourProgression($dossierJob, 60, 'Analyse de sentiment...', 'Traitement des textes');
