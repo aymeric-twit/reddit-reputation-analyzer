@@ -198,6 +198,23 @@ const COULEURS_GRAPHIQUES = {
 };
 
 /**
+ * Charge Chart.js dynamiquement si absent (supprime par la plateforme en mode embedded).
+ *
+ * @returns {Promise<void>}
+ */
+function chargerChartJs() {
+    if (typeof Chart !== 'undefined') return Promise.resolve();
+
+    return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4';
+        script.onload = resolve;
+        script.onerror = () => reject(new Error('Impossible de charger Chart.js'));
+        document.head.appendChild(script);
+    });
+}
+
+/**
  * Configuration globale Chart.js.
  */
 function configurerChartJs() {
@@ -1111,7 +1128,8 @@ function initFormulairesParametres() {
 /**
  * Initialise la page de resultats.
  */
-function initResultats() {
+async function initResultats() {
+    await chargerChartJs();
     configurerChartJs();
 
     const elAnalyse = document.querySelector('[data-analyse-id]');
@@ -2719,7 +2737,8 @@ function renderComparaisonTableau(data) {
    POINT D'ENTREE
    ========================================================================== */
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+    await chargerChartJs();
     configurerChartJs();
 
     if (document.querySelector('[data-analyse-id]')) {
@@ -2732,3 +2751,15 @@ document.addEventListener('DOMContentLoaded', () => {
         initFormulairesParametres();
     }
 });
+
+// --- Help panel collapse ---
+(function () {
+    var panel = document.querySelector('.config-help-panel');
+    var btn = panel ? panel.querySelector('.help-toggle-btn') : null;
+    if (panel && btn) {
+        btn.addEventListener('click', function () {
+            panel.classList.toggle('expanded');
+            btn.textContent = panel.classList.contains('expanded') ? '▲ Réduire' : '▼ Voir plus';
+        });
+    }
+})();
