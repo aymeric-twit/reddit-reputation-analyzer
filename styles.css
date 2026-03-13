@@ -1258,46 +1258,22 @@ a:hover {
 
 /* -- Panneau d'aide --------------------------------------------------- */
 .config-help-panel {
-    background: var(--bg-body);
-    border: 1px solid var(--border-color);
+    background: var(--brand-teal-light);
     border-left: 3px solid var(--brand-gold);
     border-radius: 0.75rem;
-    padding: 1rem;
-    font-size: 0.82rem;
-    color: var(--text-secondary);
-    line-height: 1.55;
-    max-height: 5.5rem;
-    overflow: hidden;
-    position: relative;
-    transition: max-height 0.3s ease;
-}
-.config-help-panel .help-title {
-    font-weight: 700;
+    padding: 1.25rem;
     font-size: 0.85rem;
-    color: var(--brand-dark);
+    line-height: 1.6;
+    position: relative;
+    overflow: hidden;
+    transition: max-height 0.4s ease, opacity 0.3s ease;
 }
-.config-help-panel ul { padding-left: 1.1rem; margin-bottom: 0; }
-.config-help-panel li { margin-bottom: 0.25rem; }
-.config-help-panel.expanded {
-    max-height: 2000px;
-}
-.config-help-panel:not(.expanded)::after {
-    content: '';
-    position: absolute;
-    bottom: 0; left: 0; right: 0;
-    height: 2rem;
-    background: linear-gradient(transparent, var(--bg-body));
-    pointer-events: none;
-}
-.help-toggle-btn {
-    position: absolute;
-    bottom: 0.25rem;
-    right: 0.5rem;
-    font-size: 0.75rem;
-    cursor: pointer;
-    color: var(--brand-teal);
-    background: none;
-    border: none;
-    z-index: 1;
-}
-.help-toggle-btn:hover { color: var(--brand-dark); }
+.config-help-panel ul { padding-left: 1.25rem; margin-bottom: 0.5rem; }
+.config-help-panel li { margin-bottom: 0.35rem; }
+.config-help-panel hr { border-color: rgba(0, 76, 76, 0.1); margin: 0.75rem 0; }
+.help-title { font-weight: 600; color: var(--brand-dark); font-size: 0.9rem; }
+.help-title[role="button"] { cursor: pointer; }
+.help-title[role="button"]:hover { color: var(--brand-teal); }
+.help-chevron { font-size: 0.7rem; transition: transform 0.3s; }
+.help-title[aria-expanded="true"] .help-chevron { transform: rotate(180deg); }
+#helpPanel.help-hidden { display: none; }

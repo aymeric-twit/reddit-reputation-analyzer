@@ -211,7 +211,6 @@
                 <ul class="mb-0">
                     <li>1 analyse de marque = <strong>1 crédit</strong></li>
                 </ul>
-                <span class="help-toggle-btn">▼ Voir plus</span>
             </div>
         </div>
         </div>
