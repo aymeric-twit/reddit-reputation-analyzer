@@ -1273,6 +1273,9 @@ async function chargerResultatsAnalyse(analyseId) {
             opportunites: {},
         };
 
+        // Indicateur qualite des donnees
+        renderIndicateurQualite(d.statistiques || {});
+
         renderSynthese(data);
         renderSujets(data);
         renderQuestions(data);
@@ -1290,6 +1293,32 @@ async function chargerResultatsAnalyse(analyseId) {
                 </div>
             `;
         }
+    }
+}
+
+/**
+ * Affiche l'indicateur de qualite des donnees selon le mode de collecte.
+ *
+ * @param {object} stats Statistiques de l'analyse
+ */
+function renderIndicateurQualite(stats) {
+    const el = document.getElementById('indicateurQualiteDonnees');
+    if (!el) return;
+
+    const mode = stats.mode_collecte || 'serpapi';
+    el.style.display = '';
+
+    if (mode === 'navigateur') {
+        el.className = 'alert alert-success mb-4';
+        el.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> '
+            + '<strong>Donnees completes</strong> — Analyse basee sur les donnees Reddit directes (mode Navigateur). '
+            + 'Engagement, auteurs et scores disponibles.';
+    } else {
+        el.className = 'alert alert-warning mb-4';
+        el.innerHTML = '<i class="bi bi-exclamation-triangle-fill me-1"></i> '
+            + '<strong>Donnees partielles</strong> — Analyse basee sur les snippets Google (SerpAPI). '
+            + 'Les metriques d\'engagement (score, commentaires, awards) ne sont pas disponibles. '
+            + '<br><small>Pour des resultats plus complets, relancez l\'analyse en mode Navigateur.</small>';
     }
 }
 

@@ -176,6 +176,7 @@ try {
                 'nb_auteurs'        => count($auteurs),
                 'methode_sentiment' => $statsGlobales['methode_sentiment'] ?? 'lexique',
                 'appels_api_nlp'    => $statsGlobales['appels_api_nlp'] ?? 0,
+                'mode_collecte'     => $statsGlobales['mode_collecte'] ?? 'serpapi',
             ],
         ],
         'message' => 'Resultats de l\'analyse recuperes avec succes.',

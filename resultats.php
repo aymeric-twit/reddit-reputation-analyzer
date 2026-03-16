@@ -63,6 +63,9 @@ $scoreReputation = $analyse['score_reputation'] !== null ? round((float)$analyse
         </small>
     </div>
 
+    <!-- Indicateur qualite donnees -->
+    <div id="indicateurQualiteDonnees" class="alert mb-4" style="display:none;"></div>
+
     <!-- Navigation onglets (scrollable sur mobile) -->
     <ul class="nav nav-tabs flex-nowrap overflow-auto mb-4" id="onglets-resultats" role="tablist" style="white-space:nowrap;">
         <li class="nav-item" role="presentation">

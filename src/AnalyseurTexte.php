@@ -113,14 +113,42 @@ class AnalyseurTexte
         // Filtrer les termes trop rares (au moins 2 occurrences)
         $frequences = array_filter($frequences, fn(int $f): bool => $f >= 2);
 
+        // Bonus n-grammes : les bigrammes et trigrammes sont plus pertinents
+        foreach ($frequences as $terme => $freq) {
+            $nbMots = substr_count($terme, ' ') + 1;
+            if ($nbMots === 2) {
+                $frequences[$terme] = (int) round($freq * 1.5);
+            } elseif ($nbMots >= 3) {
+                $frequences[$terme] = (int) round($freq * 1.8);
+            }
+        }
+
         // Trier par frequence decroissante
         arsort($frequences);
+
+        // Dedoublonner : si un bigramme/trigramme existe, supprimer les unigrammes sous-composants moins frequents
+        $termesRetenus = [];
+        $termesExclus = [];
+        foreach (array_keys($frequences) as $terme) {
+            if (isset($termesExclus[$terme])) {
+                continue;
+            }
+            $termesRetenus[] = $terme;
+            // Si c'est un n-gramme, marquer ses composants unigrammes comme exclus
+            if (str_contains($terme, ' ')) {
+                foreach (explode(' ', $terme) as $composant) {
+                    if (isset($frequences[$composant]) && $frequences[$composant] <= $frequences[$terme]) {
+                        $termesExclus[$composant] = true;
+                    }
+                }
+            }
+        }
 
         // Construire le resultat
         $sujets = [];
         $compteur = 0;
 
-        foreach ($frequences as $terme => $frequence) {
+        foreach ($termesRetenus as $terme) {
             if ($compteur >= $topN) {
                 break;
             }
@@ -128,7 +156,7 @@ class AnalyseurTexte
             $motsCles = explode(' ', $terme);
             $sujets[] = [
                 'label'     => $terme,
-                'frequence' => $frequence,
+                'frequence' => $frequences[$terme],
                 'mots_cles' => $motsCles,
             ];
 
@@ -341,6 +369,9 @@ class AnalyseurTexte
         // Supprimer les mentions Reddit (u/nom, r/subreddit)
         $texte = preg_replace('/[ur]\/\w+/', '', $texte) ?? $texte;
 
+        // Supprimer les termes Reddit parasites
+        $texte = preg_replace('/\b(deleted|removed|edit|update|tl;?dr|imo|imho|iirc|fwiw|afaik|eli5|tldr|amp|nbsp|http|www)\b/i', '', $texte) ?? $texte;
+
         // Supprimer les caracteres speciaux sauf lettres, chiffres, espaces et apostrophes
         $texte = preg_replace("/[^\p{L}\p{N}\s'-]/u", ' ', $texte) ?? $texte;
 
@@ -408,7 +439,7 @@ class AnalyseurTexte
     {
         $cheminBase = __DIR__ . '/../data/';
 
-        $fichiers = ['stopwords_en.json', 'stopwords_fr.json'];
+        $fichiers = ['stopwords_en.json', 'stopwords_fr.json', 'stopwords_de.json', 'stopwords_es.json'];
 
         foreach ($fichiers as $fichier) {
             $chemin = $cheminBase . $fichier;

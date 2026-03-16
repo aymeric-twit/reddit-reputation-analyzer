@@ -48,9 +48,13 @@ class CalculateurReputation
                 'pourcentages'          => ['positif' => 0.0, 'neutre' => 0.0, 'negatif' => 0.0],
                 'volume_total'          => 0,
                 'score_engagement_moyen' => 0.0,
+                'mode_donnees'          => 'limite',
                 'details'               => [],
             ];
         }
+
+        // Detecter si l'engagement est disponible (mode navigateur vs SerpAPI)
+        $engagementDisponible = $this->aEngagementDisponible($toutesPublications);
 
         // Compter la repartition des sentiments
         $nbPositif = 0;
@@ -93,11 +97,26 @@ class CalculateurReputation
             ? $influencePositive / $influenceTotale
             : 0.0;
 
+        // Poids adaptatifs selon la disponibilite des donnees d'engagement
+        if ($engagementDisponible) {
+            // Mode complet (navigateur) : poids equilibres
+            $pSentPos = 0.40;
+            $pSentNeg = 0.40;
+            $pVol = 0.10;
+            $pInf = 0.10;
+        } else {
+            // Mode degrade (SerpAPI) : tout sur sentiment + volume
+            $pSentPos = 0.45;
+            $pSentNeg = 0.45;
+            $pVol = 0.10;
+            $pInf = 0.0;
+        }
+
         // Calcul du score brut (-1 a +1)
-        $scoreBrut = ($pctPositif * self::POIDS_SENTIMENT_POSITIF)
-            - ($pctNegatif * self::POIDS_SENTIMENT_NEGATIF)
-            + ($volumePositifNorm * self::POIDS_VOLUME)
-            + ($influenceNorm * self::POIDS_INFLUENCE);
+        $scoreBrut = ($pctPositif * $pSentPos)
+            - ($pctNegatif * $pSentNeg)
+            + ($volumePositifNorm * $pVol)
+            + ($influenceNorm * $pInf);
 
         // Mise a l'echelle 0-100
         $scoreGlobal = round(($scoreBrut + 0.5) * 100, 1);
@@ -117,12 +136,36 @@ class CalculateurReputation
             ],
             'volume_total'           => $volumeTotal,
             'score_engagement_moyen' => round($engagementTotal / $volumeTotal, 2),
+            'mode_donnees'           => $engagementDisponible ? 'complet' : 'limite',
             'details' => [
                 'score_brut'              => round($scoreBrut, 4),
                 'volume_positif_normalise' => round($volumePositifNorm, 4),
                 'influence_normalisee'    => round($influenceNorm, 4),
+                'engagement_disponible'   => $engagementDisponible,
             ],
         ];
+    }
+
+    /**
+     * Detecte si les donnees d'engagement sont reellement disponibles.
+     *
+     * En mode SerpAPI, score/nb_commentaires/awards sont toujours 0.
+     * En mode navigateur, au moins 10% des publications ont un score > 0.
+     */
+    private function aEngagementDisponible(array $publications): bool
+    {
+        if (empty($publications)) {
+            return false;
+        }
+
+        $nbAvecScore = 0;
+        foreach ($publications as $pub) {
+            if ((int) ($pub['score'] ?? 0) > 0) {
+                $nbAvecScore++;
+            }
+        }
+
+        return $nbAvecScore > (count($publications) * 0.1);
     }
 
     /**
@@ -251,28 +294,30 @@ class CalculateurReputation
             }
         }
 
-        // Analyser les publications a fort engagement
-        foreach ($publications as $publication) {
-            $engagement = $this->calculerEngagement($publication);
-            if ($engagement < 50.0) {
-                continue;
-            }
+        // Analyser les publications a fort engagement (seulement si engagement disponible)
+        if ($this->aEngagementDisponible($publications)) {
+            foreach ($publications as $publication) {
+                $engagement = $this->calculerEngagement($publication);
+                if ($engagement < 50.0) {
+                    continue;
+                }
 
-            $label = $publication['label_sentiment'] ?? 'neutre';
-            $subreddit = $publication['subreddit'] ?? '';
-            $titre = $publication['titre'] ?? '';
+                $label = $publication['label_sentiment'] ?? 'neutre';
+                $subreddit = $publication['subreddit'] ?? '';
+                $titre = $publication['titre'] ?? '';
 
-            $facteur = [
-                'sujet'     => mb_substr($titre, 0, 100),
-                'subreddit' => $subreddit,
-                'engagement' => round($engagement, 2),
-                'impact'    => $engagement > 200 ? 'fort' : 'moyen',
-            ];
+                $facteur = [
+                    'sujet'     => mb_substr($titre, 0, 100),
+                    'subreddit' => $subreddit,
+                    'engagement' => round($engagement, 2),
+                    'impact'    => $engagement > 200 ? 'fort' : 'moyen',
+                ];
 
-            if ($label === 'positif') {
-                $facteursPositifs[] = $facteur;
-            } elseif ($label === 'negatif') {
-                $facteursNegatifs[] = $facteur;
+                if ($label === 'positif') {
+                    $facteursPositifs[] = $facteur;
+                } elseif ($label === 'negatif') {
+                    $facteursNegatifs[] = $facteur;
+                }
             }
         }
 
@@ -317,12 +362,17 @@ class CalculateurReputation
             ];
         }
 
-        // Opportunite 2 : Discussions negatives a fort engagement
+        // Opportunite 2 : Discussions negatives (a fort engagement si dispo, sinon par volume)
+        $engagementDispo = $this->aEngagementDisponible($publications);
         $discussionsNegatives = array_filter(
             $publications,
             fn(array $p): bool => ($p['label_sentiment'] ?? '') === 'negatif'
-                && $this->calculerEngagement($p) > 50.0
+                && ($engagementDispo ? $this->calculerEngagement($p) > 50.0 : true)
         );
+        // En mode SerpAPI, limiter aux 10 plus recentes pour eviter le bruit
+        if (!$engagementDispo && count($discussionsNegatives) > 10) {
+            $discussionsNegatives = array_slice($discussionsNegatives, 0, 10);
+        }
 
         if (!empty($discussionsNegatives)) {
             $nbDiscussions = count($discussionsNegatives);

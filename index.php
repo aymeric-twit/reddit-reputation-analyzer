@@ -124,23 +124,20 @@
                         <label class="form-label fw-semibold">Mode de collecte</label>
                         <div class="btn-group w-100" role="group">
                             <input type="radio" class="btn-check" name="mode_collecte" id="modeAuto" value="serpapi"
-                                   <?= $serpApiDisponible ? 'checked' : 'disabled' ?>>
+                                   <?= $serpApiDisponible ? '' : 'disabled' ?>>
                             <label class="btn btn-outline-primary" for="modeAuto">
                                 <i class="bi bi-robot me-1"></i> Automatique (SerpAPI)
-                                <?php if (!$serpApiDisponible): ?>
-                                    <small class="d-block opacity-75">Non configuré</small>
-                                <?php endif; ?>
+                                <small class="d-block opacity-75"><?= $serpApiDisponible ? 'Données partielles' : 'Non configuré' ?></small>
                             </label>
-                            <input type="radio" class="btn-check" name="mode_collecte" id="modeManuel" value="navigateur"
-                                   <?= $serpApiDisponible ? '' : 'checked' ?>>
+                            <input type="radio" class="btn-check" name="mode_collecte" id="modeManuel" value="navigateur" checked>
                             <label class="btn btn-outline-primary" for="modeManuel">
                                 <i class="bi bi-window me-1"></i> Manuel (via navigateur)
                             </label>
                         </div>
                     </div>
 
-                    <!-- Bloc mode navigateur (visible si pas de SerpAPI) -->
-                    <div id="blocNavigateur" class="mt-3 <?= $serpApiDisponible ? 'd-none' : '' ?>">
+                    <!-- Bloc mode navigateur (visible par defaut, navigateur est le mode recommande) -->
+                    <div id="blocNavigateur" class="mt-3">
                         <div class="alert alert-info mb-3" style="font-size: 14px;">
                             <strong>1.</strong> Cliquez sur un bouton ci-dessous pour ouvrir Reddit (nouvel onglet)<br>
                             <strong>2.</strong> <kbd>Ctrl</kbd>+<kbd>A</kbd> puis <kbd>Ctrl</kbd>+<kbd>C</kbd> pour tout copier<br>
@@ -183,7 +180,7 @@
                         </button>
                     </div>
 
-                    <div class="mt-4 <?= $serpApiDisponible ? '' : 'd-none' ?>" id="blocBtnLancer">
+                    <div class="mt-4 d-none" id="blocBtnLancer">
                         <button type="submit" class="btn btn-primary py-2 px-4 fw-semibold" id="btnLancer">
                             <i class="bi bi-play-fill me-1"></i> Lancer l'analyse
                         </button>

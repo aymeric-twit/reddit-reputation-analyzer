@@ -353,10 +353,31 @@ try {
     $analyseurTexte = new AnalyseurTexte();
     $sujetsExtraits = $analyseurTexte->extraireSujets($tousLesTextes);
 
+    // Croiser chaque sujet avec le sentiment des publications qui le mentionnent
+    $toutesEntrees = array_merge($publications, $commentaires);
+    foreach ($sujetsExtraits as &$sujet) {
+        $scoresSujet = [];
+        $labelSujet = mb_strtolower($sujet['label'] ?? '');
+        if ($labelSujet === '') {
+            continue;
+        }
+        foreach ($toutesEntrees as $entree) {
+            $texte = mb_strtolower(($entree['titre'] ?? '') . ' ' . ($entree['contenu'] ?? ''));
+            if (mb_stripos($texte, $labelSujet) !== false) {
+                $scoresSujet[] = (float) ($entree['score_sentiment'] ?? 0.0);
+            }
+        }
+        $sujet['sentiment_moyen'] = count($scoresSujet) > 0
+            ? round(array_sum($scoresSujet) / count($scoresSujet), 4)
+            : 0.0;
+    }
+    unset($sujet);
+
     mettreAJourProgression($dossierJob, 85, 'Extraction des sujets...', count($sujetsExtraits) . ' sujets identifies');
     journaliser($dossierJob, count($sujetsExtraits) . ' sujets identifies', 'success');
     foreach (array_slice($sujetsExtraits, 0, 5) as $sujet) {
-        journaliser($dossierJob, '  — ' . ($sujet['label'] ?? '?') . ' (freq: ' . ($sujet['frequence'] ?? 0) . ')');
+        $sentLabel = ($sujet['sentiment_moyen'] ?? 0) > 0.05 ? '+' : (($sujet['sentiment_moyen'] ?? 0) < -0.05 ? '-' : '=');
+        journaliser($dossierJob, '  — ' . ($sujet['label'] ?? '?') . ' (freq: ' . ($sujet['frequence'] ?? 0) . ', sent: ' . $sentLabel . round($sujet['sentiment_moyen'] ?? 0, 2) . ')');
     }
 
     // --- Etape 6 : Detection des questions (85-90%) ---
@@ -531,6 +552,7 @@ try {
             'facteurs'                  => $scoreReputation['facteurs'] ?? [],
             'methode_sentiment'         => $modeSentiment,
             'appels_api_nlp'            => $analyseurSentiment->obtenirCompteurAppelsApi(),
+            'mode_collecte'             => $modeCollecte,
         ];
 
         // Mettre a jour l'analyse avec les resultats
