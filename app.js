@@ -1308,17 +1308,20 @@ function renderIndicateurQualite(stats) {
     const mode = stats.mode_collecte || 'serpapi';
     el.style.display = '';
 
-    if (mode === 'navigateur') {
+    if (mode === 'navigateur' || mode === 'pullpush') {
         el.className = 'alert alert-success mb-4';
+        const src = mode === 'pullpush' ? 'PullPush.io (archive Reddit)' : 'mode Navigateur';
         el.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> '
-            + '<strong>Donnees completes</strong> — Analyse basee sur les donnees Reddit directes (mode Navigateur). '
+            + '<strong>Donnees completes</strong> — Analyse basee sur les donnees Reddit directes (' + src + '). '
             + 'Engagement, auteurs et scores disponibles.';
-    } else {
+    } else if (mode === 'serpapi') {
         el.className = 'alert alert-warning mb-4';
         el.innerHTML = '<i class="bi bi-exclamation-triangle-fill me-1"></i> '
             + '<strong>Donnees partielles</strong> — Analyse basee sur les snippets Google (SerpAPI). '
             + 'Les metriques d\'engagement (score, commentaires, awards) ne sont pas disponibles. '
             + '<br><small>Pour des resultats plus complets, relancez l\'analyse en mode Navigateur.</small>';
+    } else {
+        el.style.display = 'none';
     }
 }
 

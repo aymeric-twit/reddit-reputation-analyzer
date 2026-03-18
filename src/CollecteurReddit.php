@@ -3,27 +3,31 @@
 declare(strict_types=1);
 
 /**
- * Client de collecte Reddit via SerpAPI (Google Search API).
+ * Client de collecte Reddit multi-sources.
  *
- * Recherche des publications Reddit mentionnant une marque via
- * l'API Google Search de SerpAPI (site:reddit.com).
- *
- * Alternative : le mode "navigateur" permet a l'utilisateur de
- * coller directement le JSON Reddit depuis son navigateur.
- * Dans ce cas, cette classe n'est pas utilisee.
+ * Sources (par ordre de priorite) :
+ * 1. PullPush.io — Archive Reddit gratuite, donnees completes (score, auteur, commentaires)
+ * 2. SerpAPI — Google Search site:reddit.com, donnees partielles (snippets uniquement)
+ * 3. Mode navigateur — L'utilisateur colle le JSON Reddit (non gere ici)
  */
 class CollecteurReddit
 {
     private ?string $cleApiSerp;
     private float $derniereRequete = 0.0;
 
+    private const string URL_PULLPUSH_SUBMISSIONS = 'https://api.pullpush.io/reddit/search/submission/';
+    private const string URL_PULLPUSH_COMMENTS = 'https://api.pullpush.io/reddit/search/comment/';
     private const string URL_SERPAPI = 'https://serpapi.com/search.json';
+    private const int PULLPUSH_MAX_PAR_PAGE = 100;
 
     /** @var callable|null Callback de progression */
     private $rappelProgression = null;
 
     /** @var callable|null Callback de journalisation */
     private $rappelJournal = null;
+
+    /** @var string Source utilisee pour la derniere collecte */
+    private string $sourceUtilisee = 'pullpush';
 
     public function __construct()
     {
@@ -40,7 +44,18 @@ class CollecteurReddit
     }
 
     /**
-     * Recherche les publications mentionnant une marque via SerpAPI.
+     * Retourne la source utilisee pour la derniere collecte.
+     */
+    public function obtenirSourceUtilisee(): string
+    {
+        return $this->sourceUtilisee;
+    }
+
+    /**
+     * Recherche les publications mentionnant une marque.
+     *
+     * Strategie : PullPush.io d'abord (gratuit, donnees completes),
+     * puis SerpAPI en fallback si PullPush echoue ou retourne peu de resultats.
      *
      * @param string        $marque     Nom de la marque
      * @param string        $periode    Periode (hour/day/week/month/year/all)
@@ -48,9 +63,8 @@ class CollecteurReddit
      * @param array<string> $subreddits Subreddits cibles
      * @param array<string> $motsCles   Mots-cles supplementaires
      * @param callable|null $rappelProgression Callback(int $nbCollectees)
+     * @param string        $domaineGoogle Domaine Google pour SerpAPI fallback
      * @return array<int, array<string, mixed>>
-     *
-     * @throws RuntimeException Si SERPAPI_KEY n'est pas configuree
      */
     public function rechercherPublications(
         string $marque,
@@ -63,120 +77,149 @@ class CollecteurReddit
     ): array {
         $this->rappelProgression = $rappelProgression;
 
-        if ($this->cleApiSerp === null) {
-            throw new \RuntimeException(
-                'SERPAPI_KEY non configuree. Configurez la cle dans .env ou utilisez le mode navigateur.'
+        // 1. Essayer PullPush.io (gratuit, donnees completes)
+        $this->journaliserCollecte('Source primaire : PullPush.io (archive Reddit)');
+        $publications = $this->rechercherViaPullPush($marque, $periode, $limite, $subreddits, $motsCles);
+
+        if (count($publications) >= 5) {
+            $this->sourceUtilisee = 'pullpush';
+            return $publications;
+        }
+
+        // 2. Fallback SerpAPI si PullPush retourne trop peu
+        if ($this->cleApiSerp !== null) {
+            $this->journaliserCollecte(
+                'PullPush : ' . count($publications) . ' resultats insuffisants, fallback SerpAPI',
+                'warning'
+            );
+            $pubsSerpApi = $this->rechercherViaSerpApi($marque, $periode, $limite, $subreddits, $motsCles, $domaineGoogle);
+
+            if (count($pubsSerpApi) > count($publications)) {
+                $this->sourceUtilisee = 'serpapi';
+                return $pubsSerpApi;
+            }
+        }
+
+        // 3. Retourner ce qu'on a (PullPush meme si peu)
+        if (empty($publications) && $this->cleApiSerp === null) {
+            $this->journaliserCollecte(
+                'Aucun resultat. PullPush vide et SERPAPI_KEY non configuree. Utilisez le mode navigateur.',
+                'error'
             );
         }
 
-        return $this->rechercherViaSerpApi($marque, $periode, $limite, $subreddits, $motsCles, $domaineGoogle);
+        $this->sourceUtilisee = count($publications) > 0 ? 'pullpush' : 'aucune';
+        return $publications;
     }
 
     /**
-     * Recupere les commentaires d'une publication.
-     *
-     * Non disponible via SerpAPI — retourne un tableau vide.
-     * Les commentaires ne sont accessibles que via le mode navigateur.
+     * Recupere les commentaires d'une publication via PullPush.
      *
      * @return array<int, array<string, mixed>>
      */
     public function recupererCommentaires(string $redditId, int $limite = 200): array
     {
-        return [];
+        // Extraire l'ID sans le prefixe t3_
+        $postId = str_starts_with($redditId, 't3_') ? substr($redditId, 3) : $redditId;
+
+        $params = [
+            'link_id' => 't3_' . $postId,
+            'size'    => min($limite, 100),
+            'sort'    => 'score',
+        ];
+
+        $reponse = $this->requeteHttp(self::URL_PULLPUSH_COMMENTS . '?' . http_build_query($params));
+        if ($reponse === null) {
+            return [];
+        }
+
+        $donnees = json_decode($reponse, true, 512);
+        $commentaires = $donnees['data'] ?? [];
+        $resultats = [];
+
+        foreach ($commentaires as $c) {
+            $auteur = $c['author'] ?? '[deleted]';
+            if ($auteur === '[deleted]' || $auteur === 'AutoModerator') {
+                continue;
+            }
+
+            $resultats[] = [
+                'reddit_id'        => $c['name'] ?? ('t1_' . ($c['id'] ?? '')),
+                'titre'            => '',
+                'contenu'          => $c['body'] ?? '',
+                'url'              => isset($c['permalink']) ? 'https://www.reddit.com' . $c['permalink'] : '',
+                'subreddit'        => $c['subreddit'] ?? '',
+                'auteur'           => $auteur,
+                'date_publication' => isset($c['created_utc']) ? date('Y-m-d H:i:s', (int) $c['created_utc']) : null,
+                'score'            => (int) ($c['score'] ?? 0),
+                'ratio_upvote'     => 0.5,
+                'nb_commentaires'  => 0,
+                'awards'           => (int) ($c['total_awards_received'] ?? 0),
+                'type'             => 'commentaire',
+            ];
+        }
+
+        return $resultats;
     }
 
     /* ========================================================================
-       SERPAPI : Google Search site:reddit.com
+       PULLPUSH.IO : Archive Reddit gratuite
        ======================================================================== */
 
     /**
-     * Recherche via SerpAPI Google Search avec site:reddit.com.
-     *
-     * Strategie multi-requetes pour maximiser le volume :
-     * 1. Requete principale (marque exacte)
-     * 2. Variantes par tri Google (pertinence + date)
-     * 3. Si subreddits cibles, requete par subreddit
-     * 4. Si mots-cles, requete par mot-cle
+     * Recherche via PullPush.io avec pagination et multi-requetes.
      *
      * @return array<int, array<string, mixed>>
      */
-    private function rechercherViaSerpApi(
+    private function rechercherViaPullPush(
         string $marque,
         string $periode,
         int $limite,
         array $subreddits,
         array $motsCles,
-        string $domaineGoogle = 'google.com',
     ): array {
         $publications = [];
         /** @var array<string, true> Index des reddit_id deja collectes */
         $idsVus = [];
 
-        // Langue et pays selon le domaine Google
-        [$hl, $gl] = match ($domaineGoogle) {
-            'google.fr'  => ['fr', 'fr'],
-            'google.de'  => ['de', 'de'],
-            'google.es'  => ['es', 'es'],
-            'google.it'  => ['it', 'it'],
-            'google.co.uk' => ['en', 'uk'],
-            default      => ['en', 'us'],
-        };
-
-        $this->journaliserCollecte("Domaine Google : {$domaineGoogle} (hl={$hl}, gl={$gl})");
-
-        // Filtre temporel Google (tbs parameter)
-        $filtreTemps = match ($periode) {
-            'hour'  => 'qdr:h',
-            'day'   => 'qdr:d',
-            'week'  => 'qdr:w',
-            'month' => 'qdr:m',
-            'year'  => 'qdr:y',
+        // Calculer le timestamp de debut selon la periode
+        $after = match ($periode) {
+            'hour'  => time() - 3600,
+            'day'   => time() - 86400,
+            'week'  => time() - 7 * 86400,
+            'month' => time() - 30 * 86400,
+            'year'  => time() - 365 * 86400,
             default => null,
         };
 
-        // --- Construire la liste des requetes a lancer ---
+        // --- Construire les requetes ---
         $requetes = [];
 
-        // 1. Requete principale (pertinence)
-        $requetes[] = [
-            'q'    => $this->construireRequeteSerpApi($marque, [], []),
-            'label' => 'principale',
-        ];
+        // 1. Recherche exacte (guillemets)
+        $requetes[] = ['q' => '"' . $marque . '"', 'label' => 'exacte'];
 
-        // 2. Meme requete triee par date (Google : tbs=sbd:1)
-        $requetes[] = [
-            'q'     => $this->construireRequeteSerpApi($marque, [], []),
-            'label' => 'recentes',
-            'extra' => ['tbs' => ($filtreTemps !== null ? $filtreTemps . ',sbd:1' : 'sbd:1')],
-        ];
-
-        // 3. Par subreddit cible (si fournis)
+        // 2. Par subreddit cible
         foreach (array_slice($subreddits, 0, 5) as $sub) {
             $requetes[] = [
-                'q'     => $this->construireRequeteSerpApi($marque, [$sub], []),
-                'label' => "r/{$sub}",
+                'q'         => '"' . $marque . '"',
+                'subreddit' => trim($sub),
+                'label'     => 'r/' . trim($sub),
             ];
         }
 
-        // 4. Par mot-cle (si fournis)
+        // 3. Avec mots-cles
         foreach (array_slice($motsCles, 0, 3) as $mc) {
             $requetes[] = [
-                'q'     => $this->construireRequeteSerpApi($marque, [], [$mc]),
-                'label' => "mot-cle:{$mc}",
+                'q'     => '"' . $marque . '" ' . trim($mc),
+                'label' => 'mot-cle:' . trim($mc),
             ];
         }
 
-        // 5. Sans guillemets (plus large) si marque multi-mots
-        if (str_contains($marque, ' ')) {
-            $requetes[] = [
-                'q'     => 'site:reddit.com ' . $marque,
-                'label' => 'sans guillemets',
-            ];
-        }
+        // 4. Sans guillemets (plus large)
+        $requetes[] = ['q' => $marque, 'label' => 'large'];
 
-        // --- Lancer les requetes avec pagination ---
+        // --- Lancer les requetes ---
         $maxAppelsTotal = 15;
-        $maxPagesParRequete = 3;
         $appelsTotal = 0;
 
         foreach ($requetes as $req) {
@@ -184,58 +227,58 @@ class CollecteurReddit
                 break;
             }
 
-            $this->journaliserCollecte("SerpAPI [{$req['label']}] : {$req['q']}");
+            $this->journaliserCollecte("PullPush [{$req['label']}] : {$req['q']}");
 
-            // Pagination : jusqu'a $maxPagesParRequete pages par requete
-            for ($page = 0; $page < $maxPagesParRequete; $page++) {
+            // Pagination via le champ before (timestamp du dernier resultat)
+            $before = null;
+            $maxPages = 5;
+
+            for ($page = 0; $page < $maxPages; $page++) {
                 if (count($publications) >= $limite || $appelsTotal >= $maxAppelsTotal) {
                     break;
                 }
 
-                $this->respecterRateLimit(0.5);
+                $this->respecterRateLimit(1.0);
 
                 $params = [
-                    'engine'        => 'google',
-                    'q'             => $req['q'],
-                    'api_key'       => $this->cleApiSerp,
-                    'num'           => 100,
-                    'start'         => $page * 100,
-                    'hl'            => $hl,
-                    'gl'            => $gl,
-                    'google_domain' => $domaineGoogle,
+                    'q'    => $req['q'],
+                    'size' => self::PULLPUSH_MAX_PAR_PAGE,
+                    'sort' => 'score',
+                    'sort_type' => 'desc',
                 ];
 
-                // Filtre temporel par defaut
-                if ($filtreTemps !== null && !isset($req['extra']['tbs'])) {
-                    $params['tbs'] = $filtreTemps;
+                if (isset($req['subreddit'])) {
+                    $params['subreddit'] = $req['subreddit'];
+                }
+                if ($after !== null) {
+                    $params['after'] = $after;
+                }
+                if ($before !== null) {
+                    $params['before'] = $before;
                 }
 
-                // Parametres supplementaires
-                if (isset($req['extra'])) {
-                    $params = array_merge($params, $req['extra']);
-                }
-
-                $reponse = $this->requeteSerpApi($params);
+                $reponse = $this->requeteHttp(self::URL_PULLPUSH_SUBMISSIONS . '?' . http_build_query($params));
                 $appelsTotal++;
 
                 if ($reponse === null) {
+                    $this->journaliserCollecte("PullPush [{$req['label']}] : erreur HTTP", 'warning');
                     break;
                 }
 
-                $resultats = $reponse['organic_results'] ?? [];
+                $donnees = json_decode($reponse, true, 512);
+                $resultats = $donnees['data'] ?? [];
+
                 if (empty($resultats)) {
-                    $this->journaliserCollecte("SerpAPI [{$req['label']}] page " . ($page + 1) . " : 0 resultats");
                     break;
                 }
 
                 $nouveaux = 0;
                 foreach ($resultats as $resultat) {
-                    $pub = $this->convertirResultatSerpApi($resultat);
+                    $pub = $this->convertirResultatPullPush($resultat);
                     if ($pub === null) {
                         continue;
                     }
 
-                    // Deduplication par reddit_id
                     if (isset($idsVus[$pub['reddit_id']])) {
                         continue;
                     }
@@ -251,19 +294,27 @@ class CollecteurReddit
                 }
 
                 $this->journaliserCollecte(
-                    "SerpAPI [{$req['label']}] page " . ($page + 1) . " : {$nouveaux} nouveaux posts"
-                    . " (total " . count($publications) . ", {$appelsTotal} appels)"
+                    "PullPush [{$req['label']}] page " . ($page + 1) . " : {$nouveaux} nouveaux"
+                    . " (total " . count($publications) . ")"
                 );
 
-                // Arreter la pagination si pas de page suivante
-                if (empty($reponse['serpapi_pagination']['next'])) {
+                // Pagination : utiliser le timestamp du dernier resultat
+                $dernier = end($resultats);
+                if ($dernier && isset($dernier['created_utc'])) {
+                    $before = (int) $dernier['created_utc'];
+                } else {
+                    break;
+                }
+
+                // Si cette page a retourne moins que le max, c'est la derniere
+                if (count($resultats) < self::PULLPUSH_MAX_PAR_PAGE) {
                     break;
                 }
             }
         }
 
         $this->journaliserCollecte(
-            count($publications) . " publications collectees via SerpAPI ({$appelsTotal} appels API)",
+            count($publications) . " publications collectees via PullPush ({$appelsTotal} appels)",
             count($publications) > 0 ? 'success' : 'warning'
         );
 
@@ -271,52 +322,171 @@ class CollecteurReddit
     }
 
     /**
-     * Execute une requete vers l'API SerpAPI.
+     * Convertit un resultat PullPush en publication Reddit.
      *
-     * @param array<string, mixed> $params Parametres de recherche
-     * @return array<string, mixed>|null Reponse JSON decodee
+     * @return array<string, mixed>|null
      */
+    private function convertirResultatPullPush(array $resultat): ?array
+    {
+        $id = $resultat['id'] ?? '';
+        if ($id === '') {
+            return null;
+        }
+
+        $auteur = $resultat['author'] ?? '[deleted]';
+        if ($auteur === '[deleted]') {
+            return null;
+        }
+
+        return [
+            'reddit_id'        => $resultat['name'] ?? ('t3_' . $id),
+            'titre'            => $resultat['title'] ?? '',
+            'contenu'          => $resultat['selftext'] ?? '',
+            'url'              => isset($resultat['permalink'])
+                ? 'https://www.reddit.com' . $resultat['permalink']
+                : 'https://www.reddit.com/r/' . ($resultat['subreddit'] ?? '') . '/comments/' . $id . '/',
+            'subreddit'        => $resultat['subreddit'] ?? '',
+            'auteur'           => $auteur,
+            'date_publication' => isset($resultat['created_utc'])
+                ? date('Y-m-d H:i:s', (int) $resultat['created_utc'])
+                : null,
+            'score'            => (int) ($resultat['score'] ?? 0),
+            'ratio_upvote'     => (float) ($resultat['upvote_ratio'] ?? 0.5),
+            'nb_commentaires'  => (int) ($resultat['num_comments'] ?? 0),
+            'awards'           => (int) ($resultat['total_awards_received'] ?? 0),
+            'type'             => 'post',
+        ];
+    }
+
+    /* ========================================================================
+       SERPAPI : Google Search site:reddit.com (fallback)
+       ======================================================================== */
+
+    /**
+     * Recherche via SerpAPI Google Search avec site:reddit.com.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function rechercherViaSerpApi(
+        string $marque,
+        string $periode,
+        int $limite,
+        array $subreddits,
+        array $motsCles,
+        string $domaineGoogle = 'google.com',
+    ): array {
+        $publications = [];
+        $idsVus = [];
+
+        [$hl, $gl] = match ($domaineGoogle) {
+            'google.fr'    => ['fr', 'fr'],
+            'google.de'    => ['de', 'de'],
+            'google.es'    => ['es', 'es'],
+            'google.it'    => ['it', 'it'],
+            'google.co.uk' => ['en', 'uk'],
+            default        => ['en', 'us'],
+        };
+
+        $this->journaliserCollecte("SerpAPI fallback (domaine: {$domaineGoogle})");
+
+        $filtreTemps = match ($periode) {
+            'hour'  => 'qdr:h',
+            'day'   => 'qdr:d',
+            'week'  => 'qdr:w',
+            'month' => 'qdr:m',
+            'year'  => 'qdr:y',
+            default => null,
+        };
+
+        $requetes = [];
+        $requetes[] = ['q' => $this->construireRequeteSerpApi($marque, [], []), 'label' => 'principale'];
+        $requetes[] = [
+            'q'     => $this->construireRequeteSerpApi($marque, [], []),
+            'label' => 'recentes',
+            'extra' => ['tbs' => ($filtreTemps !== null ? $filtreTemps . ',sbd:1' : 'sbd:1')],
+        ];
+
+        foreach (array_slice($subreddits, 0, 3) as $sub) {
+            $requetes[] = ['q' => $this->construireRequeteSerpApi($marque, [$sub], []), 'label' => "r/{$sub}"];
+        }
+
+        $maxAppels = 8;
+        $appels = 0;
+
+        foreach ($requetes as $req) {
+            if (count($publications) >= $limite || $appels >= $maxAppels) {
+                break;
+            }
+
+            $this->respecterRateLimit(0.5);
+
+            $params = [
+                'engine'        => 'google',
+                'q'             => $req['q'],
+                'api_key'       => $this->cleApiSerp,
+                'num'           => 100,
+                'start'         => 0,
+                'hl'            => $hl,
+                'gl'            => $gl,
+                'google_domain' => $domaineGoogle,
+            ];
+
+            if ($filtreTemps !== null && !isset($req['extra']['tbs'])) {
+                $params['tbs'] = $filtreTemps;
+            }
+            if (isset($req['extra'])) {
+                $params = array_merge($params, $req['extra']);
+            }
+
+            $reponse = $this->requeteSerpApi($params);
+            $appels++;
+
+            if ($reponse === null) {
+                continue;
+            }
+
+            foreach (($reponse['organic_results'] ?? []) as $resultat) {
+                $pub = $this->convertirResultatSerpApi($resultat);
+                if ($pub === null || isset($idsVus[$pub['reddit_id']])) {
+                    continue;
+                }
+                $idsVus[$pub['reddit_id']] = true;
+                $publications[] = $pub;
+                $this->notifierProgression(count($publications));
+                if (count($publications) >= $limite) {
+                    break;
+                }
+            }
+
+            $this->journaliserCollecte("SerpAPI [{$req['label']}] : " . count($publications) . " total");
+        }
+
+        $this->journaliserCollecte(
+            count($publications) . " publications via SerpAPI ({$appels} appels)",
+            count($publications) > 0 ? 'success' : 'warning'
+        );
+
+        return $publications;
+    }
+
     private function requeteSerpApi(array $params): ?array
     {
         $url = self::URL_SERPAPI . '?' . http_build_query($params);
+        $corps = $this->requeteHttp($url);
 
-        $ch = curl_init();
-        curl_setopt_array($ch, [
-            CURLOPT_URL            => $url,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT        => 30,
-            CURLOPT_CONNECTTIMEOUT => 10,
-            CURLOPT_HTTPHEADER     => ['Accept: application/json'],
-        ]);
-
-        $corps = curl_exec($ch);
-        $codeHttp = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-
-        $this->derniereRequete = microtime(true);
-
-        if ($corps === false || $codeHttp !== 200) {
-            $this->journaliserCollecte("SerpAPI erreur HTTP {$codeHttp}", 'warning');
+        if ($corps === null) {
             return null;
         }
 
         $donnees = json_decode($corps, true, 512);
-        if ($donnees === null) {
-            $this->journaliserCollecte("SerpAPI : reponse JSON invalide", 'warning');
-            return null;
-        }
-
-        if (isset($donnees['error'])) {
-            $this->journaliserCollecte("SerpAPI erreur : " . ($donnees['error'] ?? 'inconnue'), 'warning');
+        if ($donnees === null || isset($donnees['error'])) {
+            $this->journaliserCollecte("SerpAPI erreur : " . ($donnees['error'] ?? 'JSON invalide'), 'warning');
             return null;
         }
 
         return $donnees;
     }
 
-    /**
-     * Construit la requete Google pour SerpAPI.
-     */
     private function construireRequeteSerpApi(string $marque, array $subreddits, array $motsCles): string
     {
         if (!empty($subreddits)) {
@@ -334,24 +504,13 @@ class CollecteurReddit
         return $requete;
     }
 
-    /**
-     * Convertit un resultat organique SerpAPI en publication Reddit.
-     *
-     * @return array<string, mixed>|null Publication formatee ou null si l'URL n'est pas un post Reddit
-     */
     private function convertirResultatSerpApi(array $resultat): ?array
     {
         $url = $resultat['link'] ?? '';
-
-        // Seuls les URLs de posts Reddit /r/xxx/comments/xxx sont valides
         if (!preg_match('#reddit\.com/r/([^/]+)/comments/([a-z0-9]+)#i', $url, $matches)) {
             return null;
         }
 
-        $subreddit = $matches[1];
-        $postId = $matches[2];
-
-        // Extraction de la date (SerpAPI fournit parfois un champ date)
         $datePublication = null;
         $dateSource = $resultat['date'] ?? null;
         if ($dateSource !== null) {
@@ -362,11 +521,11 @@ class CollecteurReddit
         }
 
         return [
-            'reddit_id'        => 't3_' . $postId,
+            'reddit_id'        => 't3_' . $matches[2],
             'titre'            => $resultat['title'] ?? '',
             'contenu'          => $resultat['snippet'] ?? '',
-            'url'              => 'https://www.reddit.com/r/' . $subreddit . '/comments/' . $postId . '/',
-            'subreddit'        => $subreddit,
+            'url'              => 'https://www.reddit.com/r/' . $matches[1] . '/comments/' . $matches[2] . '/',
+            'subreddit'        => $matches[1],
             'auteur'           => '[inconnu]',
             'date_publication' => $datePublication,
             'score'            => 0,
@@ -382,8 +541,34 @@ class CollecteurReddit
        ======================================================================== */
 
     /**
-     * Respecte un delai minimum entre les requetes.
+     * Execute une requete HTTP GET et retourne le corps de la reponse.
      */
+    private function requeteHttp(string $url): ?string
+    {
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL            => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 30,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_HTTPHEADER     => ['Accept: application/json'],
+            CURLOPT_USERAGENT      => 'RedditReputation/1.0',
+        ]);
+
+        $corps = curl_exec($ch);
+        $codeHttp = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        $this->derniereRequete = microtime(true);
+
+        if ($corps === false || $codeHttp !== 200) {
+            $this->journaliserCollecte("HTTP erreur {$codeHttp} sur " . parse_url($url, PHP_URL_HOST), 'warning');
+            return null;
+        }
+
+        return $corps;
+    }
+
     private function respecterRateLimit(float $delaiSecondes): void
     {
         if ($this->derniereRequete <= 0.0) {
@@ -398,9 +583,6 @@ class CollecteurReddit
         }
     }
 
-    /**
-     * Notifie le callback de progression si defini.
-     */
     private function notifierProgression(int $nbCollectees): void
     {
         if ($this->rappelProgression !== null) {
@@ -408,9 +590,6 @@ class CollecteurReddit
         }
     }
 
-    /**
-     * Journalise un message diagnostic via le callback si defini.
-     */
     private function journaliserCollecte(string $message, string $niveau = 'info'): void
     {
         if ($this->rappelJournal !== null) {

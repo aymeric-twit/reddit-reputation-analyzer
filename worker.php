@@ -282,12 +282,45 @@ try {
         journaliser($dossierJob, "  r/{$sub} : {$nb} post(s)");
     }
 
-    // --- Etape 3 : Commentaires (40-60%) ---
-    // Les commentaires ne sont pas accessibles via SerpAPI ni via le mode navigateur (JSON search uniquement).
-    // L'analyse de sentiment se base sur les titres + contenus des publications.
-    mettreAJourProgression($dossierJob, 40, 'Traitement des publications...', count($publications) . ' publications');
+    // --- Etape 3 : Commentaires via PullPush (40-60%) ---
+    mettreAJourProgression($dossierJob, 40, 'Collecte des commentaires...', 'Top posts');
     $commentaires = [];
-    journaliser($dossierJob, '0 commentaires (non disponibles en mode ' . $modeCollecte . ')');
+
+    // Collecter les commentaires des top posts (seulement si source = pullpush)
+    $sourceCollecte = isset($collecteur) ? $collecteur->obtenirSourceUtilisee() : $modeCollecte;
+    if ($sourceCollecte === 'pullpush' || $modeCollecte === 'navigateur') {
+        // Trier par engagement (score + commentaires) et prendre les top 10
+        $pubsTriees = $publications;
+        usort($pubsTriees, fn(array $a, array $b): int =>
+            ((int)($b['score'] ?? 0) + (int)($b['nb_commentaires'] ?? 0))
+            <=> ((int)($a['score'] ?? 0) + (int)($a['nb_commentaires'] ?? 0))
+        );
+        $topPosts = array_slice($pubsTriees, 0, 10);
+
+        if (isset($collecteur)) {
+            $nbCommentairesTotal = 0;
+            foreach ($topPosts as $i => $post) {
+                $postId = $post['reddit_id'] ?? '';
+                $nbComm = (int) ($post['nb_commentaires'] ?? 0);
+                if ($postId === '' || $nbComm === 0) {
+                    continue;
+                }
+
+                mettreAJourProgression(
+                    $dossierJob, 40 + (int)(($i / 10) * 15),
+                    'Collecte des commentaires...',
+                    'Post ' . ($i + 1) . '/10'
+                );
+
+                $comms = $collecteur->recupererCommentaires($postId, 50);
+                $commentaires = array_merge($commentaires, $comms);
+                $nbCommentairesTotal += count($comms);
+            }
+            journaliser($dossierJob, $nbCommentairesTotal . ' commentaires collectes (top 10 posts)', 'success');
+        }
+    } else {
+        journaliser($dossierJob, '0 commentaires (non disponibles en mode SerpAPI)');
+    }
 
     // --- Etape 4 : Analyse de sentiment (60-75%) ---
     mettreAJourProgression($dossierJob, 60, 'Analyse de sentiment...', 'Traitement des textes');
@@ -552,7 +585,7 @@ try {
             'facteurs'                  => $scoreReputation['facteurs'] ?? [],
             'methode_sentiment'         => $modeSentiment,
             'appels_api_nlp'            => $analyseurSentiment->obtenirCompteurAppelsApi(),
-            'mode_collecte'             => $modeCollecte,
+            'mode_collecte'             => $sourceCollecte ?? $modeCollecte,
         ];
 
         // Mettre a jour l'analyse avec les resultats
