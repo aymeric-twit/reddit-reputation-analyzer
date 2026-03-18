@@ -545,6 +545,22 @@ class CollecteurReddit
      */
     private function requeteHttp(string $url): ?string
     {
+        // Mode plateforme : client HTTP centralise
+        if (defined('PLATFORM_EMBEDDED') && class_exists('\\Platform\\Http\\ApiClient')) {
+            $client = new \Platform\Http\ApiClient('reddit-reputation');
+            $reponse = $client->get($url, [], ['Accept' => 'application/json']);
+
+            $this->derniereRequete = microtime(true);
+
+            if (!$reponse->estSucces()) {
+                $this->journaliserCollecte("HTTP erreur {$reponse->statusCode} sur " . parse_url($url, PHP_URL_HOST), 'warning');
+                return null;
+            }
+
+            return $reponse->body;
+        }
+
+        // Mode standalone : curl natif
         $ch = curl_init();
         curl_setopt_array($ch, [
             CURLOPT_URL            => $url,
