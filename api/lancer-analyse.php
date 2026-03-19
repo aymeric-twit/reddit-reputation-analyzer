@@ -208,6 +208,11 @@ try {
     $commande = 'php ' . escapeshellarg($cheminWorker) . ' --job=' . escapeshellarg($jobId) . ' > /dev/null 2>&1 &';
     exec($commande);
 
+    // Décompter les crédits
+    if (class_exists(\Platform\Module\Quota::class)) {
+        \Platform\Module\Quota::track('reddit-reputation');
+    }
+
     // --- Reponse ---
     http_response_code(201);
     echo json_encode([
