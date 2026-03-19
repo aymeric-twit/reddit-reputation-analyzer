@@ -88,5 +88,8 @@
             "method": "POST",
             "type": "ajax"
         }
-    ]
+    ],
+    "credits_par_analyse": 2,
+    "units_per_credit": 1,
+    "unit_label": "analyses"
 }
