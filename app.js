@@ -863,6 +863,10 @@ function demarrerSuiviProgression(jobId, analyseId) {
 
                 // Reactiver la navigation
                 document.querySelectorAll('#navigationPrincipale .nav-link').forEach(l => l.classList.remove('disabled'));
+
+                // Auto-collapse config
+                var configBody = document.getElementById('configBody');
+                if (configBody) { bootstrap.Collapse.getOrCreateInstance(configBody, {toggle:false}).hide(); }
             }
 
             // Erreur

@@ -4,10 +4,12 @@
     "description": "Analyse de réputation de marque sur Reddit — sentiment, sujets, engagement et opportunités",
     "version": "1.0.0",
     "icon": "bi-reddit",
+    "illustration": "illustration.svg",
     "entry_point": "index.php",
     "sort_order": 90,
     "quota_mode": "api_call",
     "default_quota": 500,
+    "unite_label": "appels API",
     "display_mode": "embedded",
     "env_keys": [
         "GOOGLE_NLP_API_KEY",

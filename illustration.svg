@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 140">
+  <rect width="200" height="140" fill="#f8fafc" rx="8"/>
+  <!-- Positive bubble (green) -->
+  <rect x="20" y="20" width="70" height="35" rx="10" fill="#198754" opacity="0.85"/>
+  <circle cx="35" cy="65" r="5" fill="#198754" opacity="0.6"/>
+  <!-- Neutral bubble (teal) -->
+  <rect x="65" y="55" width="75" height="30" rx="10" fill="#66b2b2" opacity="0.7"/>
+  <circle cx="80" cy="92" r="4" fill="#66b2b2" opacity="0.5"/>
+  <!-- Negative bubble (red) -->
+  <rect x="110" y="85" width="65" height="30" rx="10" fill="#dc3545" opacity="0.8"/>
+  <circle cx="125" cy="122" r="4" fill="#dc3545" opacity="0.5"/>
+  <!-- Sentiment dots inside bubbles -->
+  <circle cx="35" cy="37" r="3" fill="#fff" opacity="0.9"/>
+  <circle cx="48" cy="37" r="3" fill="#fff" opacity="0.7"/>
+  <circle cx="61" cy="37" r="3" fill="#fff" opacity="0.5"/>
+  <circle cx="80" cy="70" r="3" fill="#fff" opacity="0.9"/>
+  <circle cx="93" cy="70" r="3" fill="#fff" opacity="0.7"/>
+  <circle cx="106" cy="70" r="3" fill="#fff" opacity="0.5"/>
+  <circle cx="120" cy="70" r="3" fill="#fff" opacity="0.3"/>
+  <circle cx="127" cy="100" r="3" fill="#fff" opacity="0.9"/>
+  <circle cx="140" cy="100" r="3" fill="#fff" opacity="0.7"/>
+  <!-- Gauge/meter accent -->
+  <rect x="150" y="20" width="30" height="6" rx="3" fill="#004c4c" opacity="0.3"/>
+  <rect x="150" y="20" width="22" height="6" rx="3" fill="#198754" opacity="0.7"/>
+  <rect x="150" y="32" width="30" height="6" rx="3" fill="#004c4c" opacity="0.3"/>
+  <rect x="150" y="32" width="15" height="6" rx="3" fill="#fbb03b" opacity="0.7"/>
+  <rect x="150" y="44" width="30" height="6" rx="3" fill="#004c4c" opacity="0.3"/>
+  <rect x="150" y="44" width="8" height="6" rx="3" fill="#dc3545" opacity="0.7"/>
+</svg>
