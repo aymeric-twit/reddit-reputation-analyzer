@@ -190,6 +190,7 @@
         </div>
         </div>
         <div class="col-lg-4" id="helpPanel">
+                    <div id="platformCreditsSlot"></div>
             <div class="config-help-panel">
                 <div class="help-title mb-2">
                     <i class="bi bi-info-circle me-1"></i> Comment ça marche
