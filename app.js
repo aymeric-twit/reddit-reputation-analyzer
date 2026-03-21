@@ -2903,5 +2903,5 @@ document.addEventListener('DOMContentLoaded', async () => {
 // --- Help panel collapse ---
 function collapserHelpPanel() {
     var panel = document.getElementById('helpPanel');
-    if (panel) { var _hp = panel.querySelector('.config-help-panel'); if (_hp) _hp.classList.add('help-hidden'); };
+    // helpPanel reste visible
 }
