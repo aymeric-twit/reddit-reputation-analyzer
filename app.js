@@ -40,6 +40,10 @@ async function appelerApi(endpoint, options = {}) {
             headers,
         });
 
+        if (reponse.status === 429) {
+            throw new Error('Crédits épuisés. Quota mensuel atteint.');
+        }
+
         if (!reponse.ok) {
             const texteErreur = await reponse.text();
             let messageErreur;

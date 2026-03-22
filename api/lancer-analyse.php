@@ -107,6 +107,15 @@ try {
         exit;
     }
 
+    // --- Vérification quota ---
+    if (class_exists('\\Platform\\Module\\Quota')) {
+        if (!\Platform\Module\Quota::creditsDisponibles('reddit-reputation')) {
+            http_response_code(429);
+            echo json_encode(['erreur' => 'Crédits épuisés'], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+    }
+
     // Transformation des chaines CSV en tableaux
     $subreddits = $subredditsChaine !== ''
         ? array_map('trim', explode(',', $subredditsChaine))
