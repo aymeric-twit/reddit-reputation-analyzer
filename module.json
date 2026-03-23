@@ -16,7 +16,7 @@
         "SERPAPI_KEY"
     ],
     "api_doc_url": "https://www.reddit.com/dev/api/",
-    "languages": [],
+    "languages": ["fr", "en"],
     "routes": [
         {
             "path": "resultats.php",

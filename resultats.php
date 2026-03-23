@@ -31,21 +31,27 @@ $scoreReputation = $analyse['score_reputation'] !== null ? round((float)$analyse
 </head>
 <body>
 
-<?php if (!defined('PLATFORM_EMBEDDED')): ?>
 <nav class="navbar mb-4">
     <div class="container d-flex justify-content-between align-items-center">
-        <span class="navbar-brand mb-0 h1">Reddit Reputation
-            <span class="d-block d-sm-inline ms-sm-2">Analyse de réputation de marque sur Reddit</span>
+        <span class="navbar-brand mb-0 h1" data-i18n="nav.title">Reddit Reputation
+            <span class="d-block d-sm-inline ms-sm-2" data-i18n="nav.subtitle">Analyse de réputation de marque sur Reddit</span>
         </span>
+        <?php if (!defined('PLATFORM_EMBEDDED')): ?>
+        <select id="lang-select" class="form-select form-select-sm"
+                style="width:auto; background-color:rgba(255,255,255,0.15); color:#fff;
+                       border-color:rgba(255,255,255,0.3); font-size:0.8rem;">
+            <option value="fr">FR</option>
+            <option value="en">EN</option>
+        </select>
+        <?php endif; ?>
     </div>
 </nav>
-<?php endif; ?>
 
 <div class="container pb-5" style="max-width:1200px;" id="conteneurResultats" data-analyse-id="<?= $analyseId ?>">
 
     <!-- Retour + Titre -->
     <div class="d-flex align-items-center gap-3 mb-4 flex-wrap">
-        <a href="index.php" class="btn btn-outline-secondary btn-sm">
+        <a href="index.php" class="btn btn-outline-secondary btn-sm" data-i18n="resultats.retour">
             <i class="bi bi-arrow-left me-1"></i> Retour au dashboard
         </a>
         <h4 class="mb-0 fw-bold"><?= htmlspecialchars($analyse['marque_nom']) ?></h4>
@@ -56,9 +62,9 @@ $scoreReputation = $analyse['score_reputation'] !== null ? round((float)$analyse
             <span class="badge bg-<?= $couleurScore ?> fs-6"><?= $scoreReputation ?>/100</span>
         <?php endif; ?>
         <small class="text-muted ms-auto">
-            Analyse du <?= htmlspecialchars($analyse['date_lancement'] ?? '') ?>
+            <span data-i18n="resultats.analyse_du">Analyse du</span> <?= htmlspecialchars($analyse['date_lancement'] ?? '') ?>
             <?php if ($analyse['periode_debut'] && $analyse['periode_fin']): ?>
-                &mdash; Période : <?= htmlspecialchars($analyse['periode_debut']) ?> au <?= htmlspecialchars($analyse['periode_fin']) ?>
+                &mdash; <span data-i18n="resultats.periode_label">Période :</span> <?= htmlspecialchars($analyse['periode_debut']) ?> au <?= htmlspecialchars($analyse['periode_fin']) ?>
             <?php endif; ?>
         </small>
     </div>
@@ -69,42 +75,42 @@ $scoreReputation = $analyse['score_reputation'] !== null ? round((float)$analyse
     <!-- Navigation onglets (scrollable sur mobile) -->
     <ul class="nav nav-tabs flex-nowrap overflow-auto mb-4" id="onglets-resultats" role="tablist" style="white-space:nowrap;">
         <li class="nav-item" role="presentation">
-            <button class="nav-link active" id="onglet-synthese" data-bs-toggle="tab" data-bs-target="#tab-synthese" type="button" role="tab" aria-selected="true">
+            <button class="nav-link active" id="onglet-synthese" data-bs-toggle="tab" data-bs-target="#tab-synthese" type="button" role="tab" aria-selected="true" data-i18n="onglet.synthese">
                 <i class="bi bi-graph-up me-1"></i> Synth&egrave;se
             </button>
         </li>
         <li class="nav-item" role="presentation">
-            <button class="nav-link" id="onglet-sujets" data-bs-toggle="tab" data-bs-target="#tab-sujets" type="button" role="tab">
+            <button class="nav-link" id="onglet-sujets" data-bs-toggle="tab" data-bs-target="#tab-sujets" type="button" role="tab" data-i18n="onglet.sujets">
                 <i class="bi bi-chat-dots me-1"></i> Sujets dominants
             </button>
         </li>
         <li class="nav-item" role="presentation">
-            <button class="nav-link" id="onglet-questions" data-bs-toggle="tab" data-bs-target="#tab-questions" type="button" role="tab">
+            <button class="nav-link" id="onglet-questions" data-bs-toggle="tab" data-bs-target="#tab-questions" type="button" role="tab" data-i18n="onglet.questions">
                 <i class="bi bi-question-circle me-1"></i> Questions fr&eacute;quentes
             </button>
         </li>
         <li class="nav-item" role="presentation">
-            <button class="nav-link" id="onglet-discussions" data-bs-toggle="tab" data-bs-target="#tab-discussions" type="button" role="tab">
+            <button class="nav-link" id="onglet-discussions" data-bs-toggle="tab" data-bs-target="#tab-discussions" type="button" role="tab" data-i18n="onglet.discussions">
                 <i class="bi bi-fire me-1"></i> Discussions influentes
             </button>
         </li>
         <li class="nav-item" role="presentation">
-            <button class="nav-link" id="onglet-facteurs" data-bs-toggle="tab" data-bs-target="#tab-facteurs" type="button" role="tab">
+            <button class="nav-link" id="onglet-facteurs" data-bs-toggle="tab" data-bs-target="#tab-facteurs" type="button" role="tab" data-i18n="onglet.facteurs">
                 <i class="bi bi-sliders me-1"></i> Facteurs de r&eacute;putation
             </button>
         </li>
         <li class="nav-item" role="presentation">
-            <button class="nav-link" id="onglet-engagement" data-bs-toggle="tab" data-bs-target="#tab-engagement" type="button" role="tab">
+            <button class="nav-link" id="onglet-engagement" data-bs-toggle="tab" data-bs-target="#tab-engagement" type="button" role="tab" data-i18n="onglet.engagement">
                 <i class="bi bi-people me-1"></i> Engagement
             </button>
         </li>
         <li class="nav-item" role="presentation">
-            <button class="nav-link" id="onglet-geographie" data-bs-toggle="tab" data-bs-target="#tab-geographie" type="button" role="tab">
+            <button class="nav-link" id="onglet-geographie" data-bs-toggle="tab" data-bs-target="#tab-geographie" type="button" role="tab" data-i18n="onglet.geographie">
                 <i class="bi bi-geo-alt me-1"></i> G&eacute;ographie
             </button>
         </li>
         <li class="nav-item" role="presentation">
-            <button class="nav-link" id="onglet-opportunites" data-bs-toggle="tab" data-bs-target="#tab-opportunites" type="button" role="tab">
+            <button class="nav-link" id="onglet-opportunites" data-bs-toggle="tab" data-bs-target="#tab-opportunites" type="button" role="tab" data-i18n="onglet.opportunites">
                 <i class="bi bi-lightbulb me-1"></i> Opportunit&eacute;s
             </button>
         </li>
@@ -120,7 +126,7 @@ $scoreReputation = $analyse['score_reputation'] !== null ? round((float)$analyse
                 <div class="col-md-3 col-6">
                     <div class="card text-center h-100">
                         <div class="card-body">
-                            <small class="text-muted text-uppercase fw-semibold">Score de r&eacute;putation</small>
+                            <small class="text-muted text-uppercase fw-semibold" data-i18n="synthese.score_reputation">Score de r&eacute;putation</small>
                             <div class="mt-2 mb-1" id="synthese-gauge" style="min-height:100px;">
                                 <canvas id="graphiqueGauge" width="140" height="100"></canvas>
                             </div>
@@ -131,16 +137,16 @@ $scoreReputation = $analyse['score_reputation'] !== null ? round((float)$analyse
                 <div class="col-md-3 col-6">
                     <div class="card text-center h-100">
                         <div class="card-body d-flex flex-column justify-content-center">
-                            <small class="text-muted text-uppercase fw-semibold">Volume total</small>
+                            <small class="text-muted text-uppercase fw-semibold" data-i18n="synthese.volume_total">Volume total</small>
                             <h2 class="fw-bold mt-2 mb-1" id="synthese-volume">—</h2>
-                            <small class="text-muted" id="synthese-volume-detail">publications analys&eacute;es</small>
+                            <small class="text-muted" id="synthese-volume-detail" data-i18n="synthese.publications_analysees">publications analys&eacute;es</small>
                         </div>
                     </div>
                 </div>
                 <div class="col-md-3 col-6">
                     <div class="card text-center h-100">
                         <div class="card-body d-flex flex-column justify-content-center">
-                            <small class="text-muted text-uppercase fw-semibold">Sentiment dominant</small>
+                            <small class="text-muted text-uppercase fw-semibold" data-i18n="synthese.sentiment_dominant">Sentiment dominant</small>
                             <h2 class="fw-bold mt-2 mb-1" id="synthese-sentiment">—</h2>
                             <small class="text-muted" id="synthese-sentiment-detail"></small>
                         </div>
@@ -149,7 +155,7 @@ $scoreReputation = $analyse['score_reputation'] !== null ? round((float)$analyse
                 <div class="col-md-3 col-6">
                     <div class="card text-center h-100">
                         <div class="card-body d-flex flex-column justify-content-center">
-                            <small class="text-muted text-uppercase fw-semibold">Top subreddit</small>
+                            <small class="text-muted text-uppercase fw-semibold" data-i18n="synthese.top_subreddit">Top subreddit</small>
                             <h2 class="fw-bold mt-2 mb-1" id="synthese-top-subreddit">—</h2>
                             <small class="text-muted" id="synthese-top-subreddit-detail"></small>
                         </div>
@@ -162,7 +168,7 @@ $scoreReputation = $analyse['score_reputation'] !== null ? round((float)$analyse
                 <div class="col-md-5">
                     <div class="card h-100">
                         <div class="card-header d-flex justify-content-between align-items-center">
-                            <h6 class="mb-0 fw-bold">R&eacute;partition des sentiments</h6>
+                            <h6 class="mb-0 fw-bold" data-i18n="synthese.repartition_sentiments">R&eacute;partition des sentiments</h6>
                             <span id="badgeMethodeSentiment"></span>
                         </div>
                         <div class="card-body d-flex align-items-center justify-content-center">
@@ -173,7 +179,7 @@ $scoreReputation = $analyse['score_reputation'] !== null ? round((float)$analyse
                 <div class="col-md-7">
                     <div class="card h-100">
                         <div class="card-header">
-                            <h6 class="mb-0 fw-bold">&Eacute;volution temporelle</h6>
+                            <h6 class="mb-0 fw-bold" data-i18n="synthese.evolution_temporelle">&Eacute;volution temporelle</h6>
                         </div>
                         <div class="card-body">
                             <canvas id="graphiqueEvolutionTemporelle" style="max-height:280px;"></canvas>
@@ -185,7 +191,7 @@ $scoreReputation = $analyse['score_reputation'] !== null ? round((float)$analyse
             <!-- Top 3 subreddits -->
             <div class="card mb-4">
                 <div class="card-header">
-                    <h6 class="mb-0 fw-bold">Top 3 subreddits</h6>
+                    <h6 class="mb-0 fw-bold" data-i18n="synthese.top3_subreddits">Top 3 subreddits</h6>
                 </div>
                 <div class="card-body" id="synthese-top-subreddits">
                     <!-- Rempli par JS -->
@@ -198,7 +204,7 @@ $scoreReputation = $analyse['score_reputation'] !== null ? round((float)$analyse
             <!-- Nuage de mots -->
             <div class="card mb-4">
                 <div class="card-header">
-                    <h6 class="mb-0 fw-bold">Nuage de mots-cl&eacute;s</h6>
+                    <h6 class="mb-0 fw-bold" data-i18n="sujets.nuage_mots">Nuage de mots-cl&eacute;s</h6>
                 </div>
                 <div class="card-body text-center" id="sujets-wordcloud" style="min-height:250px;">
                     <!-- Rempli par JS (mots-cles en spans ponderes) -->
@@ -208,17 +214,16 @@ $scoreReputation = $analyse['score_reputation'] !== null ? round((float)$analyse
             <!-- Table des sujets -->
             <div class="card">
                 <div class="card-header">
-                    <h6 class="mb-0 fw-bold">Top 10 des sujets</h6>
+                    <h6 class="mb-0 fw-bold" data-i18n="sujets.top10">Top 10 des sujets</h6>
                 </div>
                 <div class="table-responsive">
                     <table class="table table-sm mb-0" id="tableSujets">
                         <thead>
                             <tr>
-                                <th>Sujet</th>
-                                <th>Fr&eacute;quence</th>
-                                <th>Sentiment</th>
-                                <th>Tendance</th>
-                                <th>Posts exemples</th>
+                                <th data-i18n="sujets.th.sujet">Sujet</th>
+                                <th data-i18n="sujets.th.frequence">Fr&eacute;quence</th>
+                                <th data-i18n="sujets.th.sentiment">Sentiment</th>
+                                <th data-i18n="sujets.th.exemples">Posts exemples</th>
                             </tr>
                         </thead>
                         <tbody id="corpsSujets">
@@ -233,17 +238,17 @@ $scoreReputation = $analyse['score_reputation'] !== null ? round((float)$analyse
         <div class="tab-pane fade" id="tab-questions" role="tabpanel">
             <!-- Filtres par categorie -->
             <div class="d-flex gap-2 mb-4 flex-wrap" id="filtres-questions">
-                <button class="btn btn-sm btn-outline-secondary active" data-categorie="toutes">Toutes</button>
-                <button class="btn btn-sm btn-outline-secondary" data-categorie="support_technique">
+                <button class="btn btn-sm btn-outline-secondary active" data-categorie="toutes" data-i18n="questions.toutes">Toutes</button>
+                <button class="btn btn-sm btn-outline-secondary" data-categorie="support_technique" data-i18n="questions.support_technique">
                     <i class="bi bi-tools me-1"></i> Support technique
                 </button>
-                <button class="btn btn-sm btn-outline-secondary" data-categorie="avis_produit">
+                <button class="btn btn-sm btn-outline-secondary" data-categorie="avis_produit" data-i18n="questions.avis_produit">
                     <i class="bi bi-star me-1"></i> Avis produit
                 </button>
-                <button class="btn btn-sm btn-outline-secondary" data-categorie="comparaison">
+                <button class="btn btn-sm btn-outline-secondary" data-categorie="comparaison" data-i18n="questions.comparaison">
                     <i class="bi bi-arrow-left-right me-1"></i> Comparaison
                 </button>
-                <button class="btn btn-sm btn-outline-secondary" data-categorie="pre_achat">
+                <button class="btn btn-sm btn-outline-secondary" data-categorie="pre_achat" data-i18n="questions.pre_achat">
                     <i class="bi bi-cart me-1"></i> Pr&eacute;-achat
                 </button>
             </div>
@@ -255,7 +260,7 @@ $scoreReputation = $analyse['score_reputation'] !== null ? round((float)$analyse
 
             <!-- Etat vide -->
             <div id="questions-etat-vide" class="text-center py-4" style="display:none;">
-                <p class="text-muted">Aucune question d&eacute;tect&eacute;e dans cette cat&eacute;gorie.</p>
+                <p class="text-muted" data-i18n="questions.aucune">Aucune question d&eacute;tect&eacute;e dans cette cat&eacute;gorie.</p>
             </div>
         </div>
 
@@ -263,14 +268,14 @@ $scoreReputation = $analyse['score_reputation'] !== null ? round((float)$analyse
         <div class="tab-pane fade" id="tab-discussions" role="tabpanel">
             <!-- Filtres -->
             <div class="d-flex gap-2 mb-4 flex-wrap" id="filtres-discussions">
-                <button class="btn btn-sm btn-outline-secondary active" data-filtre="toutes">Toutes</button>
-                <button class="btn btn-sm btn-outline-success" data-filtre="virale_positive">
+                <button class="btn btn-sm btn-outline-secondary active" data-filtre="toutes" data-i18n="discussions.toutes">Toutes</button>
+                <button class="btn btn-sm btn-outline-success" data-filtre="virale_positive" data-i18n="discussions.virales_positives">
                     <i class="bi bi-hand-thumbs-up me-1"></i> Virales positives
                 </button>
-                <button class="btn btn-sm btn-outline-danger" data-filtre="virale_negative">
+                <button class="btn btn-sm btn-outline-danger" data-filtre="virale_negative" data-i18n="discussions.virales_negatives">
                     <i class="bi bi-hand-thumbs-down me-1"></i> Virales n&eacute;gatives
                 </button>
-                <button class="btn btn-sm btn-outline-warning" data-filtre="controversee">
+                <button class="btn btn-sm btn-outline-warning" data-filtre="controversee" data-i18n="discussions.controversees">
                     <i class="bi bi-exclamation-triangle me-1"></i> Controvers&eacute;es
                 </button>
             </div>
@@ -281,12 +286,12 @@ $scoreReputation = $analyse['score_reputation'] !== null ? round((float)$analyse
                     <table class="table table-sm mb-0" id="tableDiscussions">
                         <thead>
                             <tr>
-                                <th>Titre</th>
-                                <th>Subreddit</th>
-                                <th>Score engagement</th>
-                                <th>Sentiment</th>
-                                <th>Type</th>
-                                <th>Lien</th>
+                                <th data-i18n="discussions.th.titre">Titre</th>
+                                <th data-i18n="discussions.th.subreddit">Subreddit</th>
+                                <th data-i18n="discussions.th.type">Type</th>
+                                <th data-i18n="discussions.th.engagement">Score engagement</th>
+                                <th data-i18n="progress.commentaires">Commentaires</th>
+                                <th data-i18n="historique.th.date">Date</th>
                             </tr>
                         </thead>
                         <tbody id="corpsDiscussions">
@@ -299,7 +304,7 @@ $scoreReputation = $analyse['score_reputation'] !== null ? round((float)$analyse
             <!-- Scatter plot engagement vs sentiment -->
             <div class="card">
                 <div class="card-header">
-                    <h6 class="mb-0 fw-bold">Engagement vs Sentiment</h6>
+                    <h6 class="mb-0 fw-bold" data-i18n="discussions.engagement_vs_sentiment">Engagement vs Sentiment</h6>
                 </div>
                 <div class="card-body">
                     <canvas id="graphiqueEngagementSentiment" style="max-height:350px;"></canvas>
@@ -314,7 +319,7 @@ $scoreReputation = $analyse['score_reputation'] !== null ? round((float)$analyse
                 <div class="col-md-6">
                     <div class="card h-100 border-success">
                         <div class="card-header bg-transparent">
-                            <h6 class="mb-0 fw-bold text-success">
+                            <h6 class="mb-0 fw-bold text-success" data-i18n="facteurs.positifs">
                                 <i class="bi bi-plus-circle me-1"></i> Facteurs positifs
                             </h6>
                         </div>
@@ -327,7 +332,7 @@ $scoreReputation = $analyse['score_reputation'] !== null ? round((float)$analyse
                 <div class="col-md-6">
                     <div class="card h-100 border-danger">
                         <div class="card-header bg-transparent">
-                            <h6 class="mb-0 fw-bold text-danger">
+                            <h6 class="mb-0 fw-bold text-danger" data-i18n="facteurs.negatifs">
                                 <i class="bi bi-dash-circle me-1"></i> Facteurs n&eacute;gatifs
                             </h6>
                         </div>
@@ -341,8 +346,8 @@ $scoreReputation = $analyse['score_reputation'] !== null ? round((float)$analyse
             <!-- Radar chart -->
             <div class="card">
                 <div class="card-header">
-                    <h6 class="mb-0 fw-bold">Profil de r&eacute;putation</h6>
-                    <small class="text-muted">Qualit&eacute;, Prix, Support, Innovation, Fiabilit&eacute;</small>
+                    <h6 class="mb-0 fw-bold" data-i18n="facteurs.profil">Profil de r&eacute;putation</h6>
+                    <small class="text-muted" data-i18n="facteurs.profil_desc">Qualit&eacute;, Prix, Support, Innovation, Fiabilit&eacute;</small>
                 </div>
                 <div class="card-body d-flex justify-content-center">
                     <canvas id="graphiqueRadarFacteurs" style="max-width:450px; max-height:350px;"></canvas>
@@ -357,7 +362,7 @@ $scoreReputation = $analyse['score_reputation'] !== null ? round((float)$analyse
                 <div class="col-md-4 col-6">
                     <div class="card text-center">
                         <div class="card-body">
-                            <small class="text-muted text-uppercase fw-semibold">Engagement moyen</small>
+                            <small class="text-muted text-uppercase fw-semibold" data-i18n="engagement.moyen">Engagement moyen</small>
                             <h3 class="fw-bold mt-2 mb-0" id="engagement-moyen">—</h3>
                         </div>
                     </div>
@@ -365,7 +370,7 @@ $scoreReputation = $analyse['score_reputation'] !== null ? round((float)$analyse
                 <div class="col-md-4 col-6">
                     <div class="card text-center">
                         <div class="card-body">
-                            <small class="text-muted text-uppercase fw-semibold">Power users</small>
+                            <small class="text-muted text-uppercase fw-semibold" data-i18n="engagement.power_users">Power users</small>
                             <h3 class="fw-bold mt-2 mb-0" id="engagement-power-users">—</h3>
                         </div>
                     </div>
@@ -373,7 +378,7 @@ $scoreReputation = $analyse['score_reputation'] !== null ? round((float)$analyse
                 <div class="col-md-4 col-6">
                     <div class="card text-center">
                         <div class="card-body">
-                            <small class="text-muted text-uppercase fw-semibold">Auteurs uniques</small>
+                            <small class="text-muted text-uppercase fw-semibold" data-i18n="engagement.auteurs_uniques">Auteurs uniques</small>
                             <h3 class="fw-bold mt-2 mb-0" id="engagement-auteurs-uniques">—</h3>
                         </div>
                     </div>
@@ -383,17 +388,17 @@ $scoreReputation = $analyse['score_reputation'] !== null ? round((float)$analyse
             <!-- Top auteurs -->
             <div class="card mb-4">
                 <div class="card-header">
-                    <h6 class="mb-0 fw-bold">Top auteurs</h6>
+                    <h6 class="mb-0 fw-bold" data-i18n="engagement.top_auteurs">Top auteurs</h6>
                 </div>
                 <div class="table-responsive">
                     <table class="table table-sm mb-0" id="tableAuteurs">
                         <thead>
                             <tr>
-                                <th>Utilisateur</th>
-                                <th>Karma</th>
-                                <th>Publications</th>
-                                <th>Score d'influence</th>
-                                <th>Type</th>
+                                <th data-i18n="engagement.th.utilisateur">Utilisateur</th>
+                                <th data-i18n="engagement.th.karma">Karma</th>
+                                <th data-i18n="engagement.th.publications">Publications</th>
+                                <th data-i18n="engagement.th.influence">Score d'influence</th>
+                                <th data-i18n="engagement.th.type">Type</th>
                             </tr>
                         </thead>
                         <tbody id="corpsAuteurs">
@@ -406,7 +411,7 @@ $scoreReputation = $analyse['score_reputation'] !== null ? round((float)$analyse
             <!-- Bar chart engagement par subreddit -->
             <div class="card">
                 <div class="card-header">
-                    <h6 class="mb-0 fw-bold">Engagement par subreddit</h6>
+                    <h6 class="mb-0 fw-bold" data-i18n="engagement.par_subreddit">Engagement par subreddit</h6>
                 </div>
                 <div class="card-body">
                     <canvas id="graphiqueEngagementSubreddits" style="max-height:300px;"></canvas>
@@ -418,23 +423,22 @@ $scoreReputation = $analyse['score_reputation'] !== null ? round((float)$analyse
         <div class="tab-pane fade" id="tab-geographie" role="tabpanel">
             <div class="alert alert-info mb-4">
                 <i class="bi bi-info-circle me-1"></i>
-                Les donn&eacute;es g&eacute;ographiques sont estim&eacute;es &agrave; partir des indices disponibles (subreddits r&eacute;gionaux, fuseaux horaires, langue).
-                La couverture peut &ecirc;tre limit&eacute;e.
+                <span data-i18n="geographie.avertissement">Les donn&eacute;es g&eacute;ographiques sont estim&eacute;es &agrave; partir des indices disponibles (subreddits r&eacute;gionaux, fuseaux horaires, langue). La couverture peut &ecirc;tre limit&eacute;e.</span>
             </div>
 
             <!-- Table geographique -->
             <div class="card mb-4">
                 <div class="card-header">
-                    <h6 class="mb-0 fw-bold">R&eacute;partition g&eacute;ographique</h6>
+                    <h6 class="mb-0 fw-bold" data-i18n="geographie.repartition">R&eacute;partition g&eacute;ographique</h6>
                 </div>
                 <div class="table-responsive">
                     <table class="table table-sm mb-0" id="tableGeographie">
                         <thead>
                             <tr>
-                                <th>R&eacute;gion</th>
-                                <th>Sentiment moyen</th>
-                                <th>Sujets dominants</th>
-                                <th>Volume</th>
+                                <th data-i18n="geographie.th.region">R&eacute;gion</th>
+                                <th data-i18n="geographie.th.sentiment">Sentiment moyen</th>
+                                <th data-i18n="geographie.th.sujets">Sujets dominants</th>
+                                <th data-i18n="geographie.th.volume">Volume</th>
                             </tr>
                         </thead>
                         <tbody id="corpsGeographie">
@@ -447,7 +451,7 @@ $scoreReputation = $analyse['score_reputation'] !== null ? round((float)$analyse
             <!-- Bar chart sentiment par region -->
             <div class="card">
                 <div class="card-header">
-                    <h6 class="mb-0 fw-bold">Sentiment par r&eacute;gion</h6>
+                    <h6 class="mb-0 fw-bold" data-i18n="geographie.sentiment_par_region">Sentiment par r&eacute;gion</h6>
                 </div>
                 <div class="card-body">
                     <canvas id="graphiqueSentimentRegions" style="max-height:300px;"></canvas>
@@ -459,17 +463,17 @@ $scoreReputation = $analyse['score_reputation'] !== null ? round((float)$analyse
         <div class="tab-pane fade" id="tab-opportunites" role="tabpanel">
             <!-- Categories d'opportunites -->
             <div class="d-flex gap-2 mb-4 flex-wrap" id="filtres-opportunites">
-                <button class="btn btn-sm btn-outline-secondary active" data-categorie="toutes">Toutes</button>
-                <button class="btn btn-sm btn-outline-secondary" data-categorie="contenu">
+                <button class="btn btn-sm btn-outline-secondary active" data-categorie="toutes" data-i18n="opportunites.toutes">Toutes</button>
+                <button class="btn btn-sm btn-outline-secondary" data-categorie="contenu" data-i18n="opportunites.contenu">
                     <i class="bi bi-file-text me-1"></i> Contenu
                 </button>
-                <button class="btn btn-sm btn-outline-secondary" data-categorie="communautes">
+                <button class="btn btn-sm btn-outline-secondary" data-categorie="communautes" data-i18n="opportunites.communautes">
                     <i class="bi bi-people me-1"></i> Communaut&eacute;s
                 </button>
-                <button class="btn btn-sm btn-outline-secondary" data-categorie="questions">
+                <button class="btn btn-sm btn-outline-secondary" data-categorie="questions" data-i18n="opportunites.questions">
                     <i class="bi bi-question-circle me-1"></i> Questions
                 </button>
-                <button class="btn btn-sm btn-outline-secondary" data-categorie="advocates">
+                <button class="btn btn-sm btn-outline-secondary" data-categorie="advocates" data-i18n="opportunites.advocates">
                     <i class="bi bi-megaphone me-1"></i> Advocates
                 </button>
             </div>
@@ -482,7 +486,7 @@ $scoreReputation = $analyse['score_reputation'] !== null ? round((float)$analyse
             <!-- Recommandations -->
             <div class="card mb-4">
                 <div class="card-header">
-                    <h6 class="mb-0 fw-bold">Recommandations</h6>
+                    <h6 class="mb-0 fw-bold" data-i18n="opportunites.recommandations">Recommandations</h6>
                 </div>
                 <div class="card-body" id="recommandations">
                     <!-- Rempli par JS : liste avec effort/impact -->
@@ -492,13 +496,13 @@ $scoreReputation = $analyse['score_reputation'] !== null ? round((float)$analyse
             <!-- Export -->
             <div class="card">
                 <div class="card-header">
-                    <h6 class="mb-0 fw-bold">Exporter les r&eacute;sultats</h6>
+                    <h6 class="mb-0 fw-bold" data-i18n="opportunites.exporter">Exporter les r&eacute;sultats</h6>
                 </div>
                 <div class="card-body d-flex gap-3 flex-wrap">
-                    <a href="api/export.php?analyse_id=<?= $analyseId ?>&format=csv" class="btn btn-outline-secondary">
+                    <a href="api/export.php?analyse_id=<?= $analyseId ?>&format=csv" class="btn btn-outline-secondary" data-i18n="opportunites.export_csv">
                         <i class="bi bi-filetype-csv me-1"></i> Export CSV
                     </a>
-                    <a href="api/export.php?analyse_id=<?= $analyseId ?>&format=json" class="btn btn-outline-secondary">
+                    <a href="api/export.php?analyse_id=<?= $analyseId ?>&format=json" class="btn btn-outline-secondary" data-i18n="opportunites.export_json">
                         <i class="bi bi-filetype-json me-1"></i> Export JSON
                     </a>
                 </div>
@@ -512,6 +516,7 @@ $scoreReputation = $analyse['score_reputation'] !== null ? round((float)$analyse
 <!-- Bootstrap JS + Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="assets/js/chart.umd.min.js"></script>
+<script src="translations.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

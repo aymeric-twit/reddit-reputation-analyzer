@@ -6,6 +6,62 @@
  */
 
 /* ==========================================================================
+   INTERNATIONALISATION (i18n)
+   ========================================================================== */
+
+var langueActuelle = (function () {
+    if (typeof window.PLATFORM_LANG === 'string' && window.PLATFORM_LANG) return window.PLATFORM_LANG;
+    try { var p = new URLSearchParams(window.location.search).get('lg'); if (p) return p; } catch (_) {}
+    try { var s = localStorage.getItem('lang'); if (s) return s; } catch (_) {}
+    return 'fr';
+})();
+
+function t(cle, params) {
+    var trad = (typeof TRANSLATIONS !== 'undefined' && TRANSLATIONS[langueActuelle] && TRANSLATIONS[langueActuelle][cle])
+        ? TRANSLATIONS[langueActuelle][cle]
+        : (typeof TRANSLATIONS !== 'undefined' && TRANSLATIONS.fr && TRANSLATIONS.fr[cle])
+            ? TRANSLATIONS.fr[cle]
+            : cle;
+    if (params) {
+        Object.keys(params).forEach(function (k) {
+            trad = trad.replace(new RegExp('\\{' + k + '\\}', 'g'), params[k]);
+        });
+    }
+    return trad;
+}
+
+function traduirePage() {
+    document.querySelectorAll('[data-i18n]').forEach(function (el) {
+        el.innerHTML = t(el.getAttribute('data-i18n'));
+    });
+    document.querySelectorAll('[data-i18n-placeholder]').forEach(function (el) {
+        el.placeholder = t(el.getAttribute('data-i18n-placeholder'));
+    });
+    document.querySelectorAll('[data-i18n-title]').forEach(function (el) {
+        el.title = t(el.getAttribute('data-i18n-title'));
+    });
+}
+
+function initLangueSelect() {
+    var sel = document.getElementById('lang-select');
+    if (sel) {
+        sel.value = langueActuelle;
+        sel.addEventListener('change', function () {
+            changerLangue(this.value);
+        });
+    }
+    window.addEventListener('platform:lang', function (e) {
+        if (e.detail && e.detail.lang) changerLangue(e.detail.lang);
+    });
+}
+
+function changerLangue(lg) {
+    langueActuelle = lg;
+    try { localStorage.setItem('lang', lg); } catch (_) {}
+    traduirePage();
+}
+
+/* ==========================================================================
    UTILITAIRES GLOBAUX
    ========================================================================== */
 
@@ -41,7 +97,7 @@ async function appelerApi(endpoint, options = {}) {
         });
 
         if (reponse.status === 429) {
-            throw new Error('Crédits épuisés. Quota mensuel atteint.');
+            throw new Error(t('msg.credits_epuises'));
         }
 
         if (!reponse.ok) {
@@ -49,9 +105,9 @@ async function appelerApi(endpoint, options = {}) {
             let messageErreur;
             try {
                 const jsonErreur = JSON.parse(texteErreur);
-                messageErreur = jsonErreur.message || jsonErreur.erreur || `Erreur HTTP ${reponse.status}`;
+                messageErreur = jsonErreur.message || jsonErreur.erreur || t('msg.erreur_http', {code: reponse.status});
             } catch {
-                messageErreur = `Erreur HTTP ${reponse.status}`;
+                messageErreur = t('msg.erreur_http', {code: reponse.status});
             }
             throw new Error(messageErreur);
         }
@@ -59,7 +115,7 @@ async function appelerApi(endpoint, options = {}) {
         return await reponse.json();
     } catch (erreur) {
         if (erreur.name === 'TypeError' && erreur.message === 'Failed to fetch') {
-            throw new Error('Impossible de contacter le serveur. Verifiez votre connexion.');
+            throw new Error(t('msg.erreur_connexion'));
         }
         throw erreur;
     }
@@ -75,18 +131,18 @@ function formaterScore(score) {
     const valeur = Math.round(score);
 
     if (valeur < 30) {
-        return { valeur, classe: 'score-low', label: 'Mauvaise' };
+        return { valeur, classe: 'score-low', label: t('score.mauvaise') };
     }
     if (valeur < 50) {
-        return { valeur, classe: 'score-mid', label: 'Faible' };
+        return { valeur, classe: 'score-mid', label: t('score.faible') };
     }
     if (valeur < 65) {
-        return { valeur, classe: 'score-mid', label: 'Moyenne' };
+        return { valeur, classe: 'score-mid', label: t('score.moyenne') };
     }
     if (valeur < 80) {
-        return { valeur, classe: 'score-high', label: 'Bonne' };
+        return { valeur, classe: 'score-high', label: t('score.bonne') };
     }
-    return { valeur, classe: 'score-high', label: 'Excellente' };
+    return { valeur, classe: 'score-high', label: t('score.excellente') };
 }
 
 /**
@@ -99,7 +155,7 @@ function formaterDate(dateStr) {
     if (!dateStr) return '—';
     try {
         const date = new Date(dateStr);
-        return date.toLocaleDateString('fr-FR', {
+        return date.toLocaleDateString(langueActuelle === 'en' ? 'en-US' : 'fr-FR', {
             day: 'numeric',
             month: 'long',
             year: 'numeric',
@@ -381,22 +437,22 @@ function mettreAJourKpis(marques) {
         <div class="kpi-card">
             <div class="kpi-icone"><i class="bi bi-bookmark-star"></i></div>
             <div class="kpi-valeur">${nbMarques}</div>
-            <div class="kpi-label">Marques suivies</div>
+            <div class="kpi-label">${t('kpi.marques_suivies')}</div>
         </div>
         <div class="kpi-card">
             <div class="kpi-icone"><i class="bi bi-speedometer2"></i></div>
             <div class="kpi-valeur ${infoScore.classe}">${nbMarques > 0 ? Math.round(scoreMoyen) : '—'}</div>
-            <div class="kpi-label">Score moyen</div>
+            <div class="kpi-label">${t('kpi.score_moyen')}</div>
         </div>
         <div class="kpi-card">
             <div class="kpi-icone"><i class="bi bi-graph-up"></i></div>
             <div class="kpi-valeur">${analysesCeMois}</div>
-            <div class="kpi-label">Analyses ce mois</div>
+            <div class="kpi-label">${t('kpi.analyses_ce_mois')}</div>
         </div>
         <div class="kpi-card">
             <div class="kpi-icone"><i class="bi bi-exclamation-triangle"></i></div>
             <div class="kpi-valeur ${alertes > 0 ? 'score-low' : ''}">${alertes}</div>
-            <div class="kpi-label">Alertes</div>
+            <div class="kpi-label">${t('kpi.alertes')}</div>
         </div>
     `;
 }
@@ -422,16 +478,16 @@ function renderCarteMarque(marque) {
 
     let flecheTendance = '';
     if (marque.tendance === 'hausse') {
-        flecheTendance = '<span class="text-success" title="En hausse"><i class="bi bi-arrow-up-circle-fill"></i></span>';
+        flecheTendance = '<span class="text-success" title="' + t('tendance.hausse') + '"><i class="bi bi-arrow-up-circle-fill"></i></span>';
     } else if (marque.tendance === 'baisse') {
-        flecheTendance = '<span class="text-danger" title="En baisse"><i class="bi bi-arrow-down-circle-fill"></i></span>';
+        flecheTendance = '<span class="text-danger" title="' + t('tendance.baisse') + '"><i class="bi bi-arrow-down-circle-fill"></i></span>';
     } else {
-        flecheTendance = '<span class="text-muted" title="Stable"><i class="bi bi-dash-circle"></i></span>';
+        flecheTendance = '<span class="text-muted" title="' + t('tendance.stable') + '"><i class="bi bi-dash-circle"></i></span>';
     }
 
     const derniereAnalyse = marque.date_derniere_analyse || marque.derniere_analyse
         ? formaterDate(marque.date_derniere_analyse || marque.derniere_analyse)
-        : 'Aucune analyse';
+        : t('carte.aucune_analyse');
 
     const analyseId = marque.derniere_analyse_id || marque.id_derniere_analyse;
     const lienResultats = analyseId
@@ -439,8 +495,8 @@ function renderCarteMarque(marque) {
         : '#';
 
     const boutonVoir = analyseId
-        ? `<a href="${lienResultats}" class="btn btn-sm btn-primary">Voir resultats</a>`
-        : `<button class="btn btn-sm btn-primary" disabled>Aucun resultat</button>`;
+        ? `<a href="${lienResultats}" class="btn btn-sm btn-primary">${t('carte.voir_resultats')}</a>`
+        : `<button class="btn btn-sm btn-primary" disabled>${t('carte.aucun_resultat')}</button>`;
 
     return `
         <div class="col-md-6 col-lg-4 mb-3">
@@ -460,8 +516,8 @@ function renderCarteMarque(marque) {
                         <span class="badge bg-light text-dark mb-2">${info.label}</span>
                         <div class="d-flex gap-2 mt-auto">
                             ${boutonVoir}
-                            <button class="btn btn-sm btn-outline-secondary" data-relancer="${marque.id}" title="Relancer l'analyse">
-                                <i class="bi bi-arrow-repeat"></i> Relancer
+                            <button class="btn btn-sm btn-outline-secondary" data-relancer="${marque.id}" title="${t('carte.relancer')}">
+                                <i class="bi bi-arrow-repeat"></i> ${t('carte.relancer')}
                             </button>
                         </div>
                     </div>
@@ -489,7 +545,7 @@ async function relancerAnalyse(marqueId) {
         if (reponse.succes) {
             demarrerSuiviProgression(reponse.job_id, reponse.analyse_id);
         } else {
-            afficherToast(reponse.message || 'Erreur lors du lancement', 'danger');
+            afficherToast(reponse.message || t('msg.erreur_lancement'), 'danger');
         }
     } catch (erreur) {
         afficherToast(erreur.message, 'danger');
@@ -573,14 +629,14 @@ function initFormulaireAnalyse() {
         const n = collecteNav.posts.length;
         apercuCollage.innerHTML = '<div class="alert alert-success py-2 mb-0">'
             + '<i class="bi bi-check-circle me-1"></i> '
-            + '<strong>' + n + '</strong> posts uniques accumules'
+            + t('msg.posts_accumules', {n: n})
             + '</div>';
         apercuCollage.classList.remove('d-none');
 
         // Afficher le bouton lancer
         if (btnLancerNavigateur && n > 0) {
             btnLancerNavigateur.classList.remove('d-none');
-            btnLancerNavigateur.innerHTML = '<i class="bi bi-play-fill me-1"></i> Lancer l\'analyse (' + n + ' posts)';
+            btnLancerNavigateur.innerHTML = t('msg.lancer_analyse_n', {n: n});
         }
     }
 
@@ -589,7 +645,7 @@ function initFormulaireAnalyse() {
         btn.addEventListener('click', () => {
             const marque = document.getElementById('marque').value.trim();
             if (!marque) {
-                afficherToast('Veuillez saisir un nom de marque.', 'warning');
+                afficherToast(t('msg.saisir_marque'), 'warning');
                 return;
             }
             const tri = btn.dataset.sort;
@@ -619,7 +675,7 @@ function initFormulaireAnalyse() {
                 const donnees = JSON.parse(texte);
                 const enfants = donnees?.data?.children ?? [];
                 if (enfants.length === 0) {
-                    throw new Error('Aucun post trouve dans le JSON');
+                    throw new Error(t('msg.aucun_post_json'));
                 }
 
                 // Accumuler avec deduplication
@@ -640,14 +696,14 @@ function initFormulaireAnalyse() {
                 if (btnPageSuivante) {
                     btnPageSuivante.classList.toggle('d-none', !collecteNav.afterToken);
                     if (collecteNav.afterToken) {
-                        btnPageSuivante.innerHTML = '<i class="bi bi-arrow-right me-1"></i> Page suivante (' + collecteNav.dernierTri + ')';
+                        btnPageSuivante.innerHTML = t('msg.page_suivante', {tri: collecteNav.dernierTri});
                     }
                 }
 
-                afficherToast(nouveaux + ' nouveaux posts ajoutes (' + collecteNav.posts.length + ' total)', 'success');
+                afficherToast(t('msg.nouveaux_posts', {n: nouveaux, total: collecteNav.posts.length}), 'success');
                 majApercu();
             } catch (erreur) {
-                afficherToast('JSON invalide ou presse-papier vide : ' + erreur.message, 'danger');
+                afficherToast(t('msg.json_invalide', {err: erreur.message}), 'danger');
             }
         });
     }
@@ -656,7 +712,7 @@ function initFormulaireAnalyse() {
     if (btnLancerNavigateur) {
         btnLancerNavigateur.addEventListener('click', async () => {
             if (collecteNav.posts.length === 0) {
-                afficherToast('Aucun post a analyser.', 'warning');
+                afficherToast(t('msg.aucun_post'), 'warning');
                 return;
             }
 
@@ -670,14 +726,14 @@ function initFormulaireAnalyse() {
             formData.append('donnees_reddit', donneesReddit);
 
             btnLancerNavigateur.disabled = true;
-            btnLancerNavigateur.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Lancement...';
+            btnLancerNavigateur.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> ${t('msg.lancement')}';
 
             try {
                 await lancerAnalyse(formData);
             } catch (erreur) {
                 afficherToast(erreur.message, 'danger');
                 btnLancerNavigateur.disabled = false;
-                btnLancerNavigateur.innerHTML = '<i class="bi bi-play-fill me-1"></i> Lancer l\'analyse (' + collecteNav.posts.length + ' posts)';
+                btnLancerNavigateur.innerHTML = t('msg.lancer_analyse_n', {n: collecteNav.posts.length});
             }
         });
     }
@@ -689,7 +745,7 @@ function initFormulaireAnalyse() {
         const boutonSubmit = formulaire.querySelector('button[type="submit"]');
         if (boutonSubmit) {
             boutonSubmit.disabled = true;
-            boutonSubmit.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Lancement...';
+            boutonSubmit.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> ${t('msg.lancement')}';
         }
 
         try {
@@ -699,7 +755,7 @@ function initFormulaireAnalyse() {
             afficherToast(erreur.message, 'danger');
             if (boutonSubmit) {
                 boutonSubmit.disabled = false;
-                boutonSubmit.innerHTML = '<i class="bi bi-play-fill"></i> Lancer l\'analyse';
+                boutonSubmit.innerHTML = t('btn.lancer_analyse');
             }
         }
     });
@@ -720,7 +776,7 @@ async function lancerAnalyse(donnees) {
     if (reponse.succes) {
         demarrerSuiviProgression(reponse.job_id, reponse.analyse_id);
     } else {
-        throw new Error(reponse.message || 'Erreur lors du lancement de l\'analyse');
+        throw new Error(reponse.message || t('msg.erreur_lancement'));
     }
 }
 
@@ -829,7 +885,7 @@ function demarrerSuiviProgression(jobId, analyseId) {
                 livelog.scrollTop = livelog.scrollHeight;
 
                 if (livelogCompteur) {
-                    livelogCompteur.textContent = `${nbLignesLog} ligne${nbLignesLog > 1 ? 's' : ''}`;
+                    livelogCompteur.textContent = nbLignesLog > 1 ? t('progress.lignes', {n: nbLignesLog}) : t('progress.ligne', {n: nbLignesLog});
                 }
 
                 // Mettre a jour les KPI depuis le log
@@ -861,8 +917,8 @@ function demarrerSuiviProgression(jobId, analyseId) {
                 if (statusMsg) {
                     const urlResultats = BASE_URL + '/resultats.php?analyse_id=' + (prog.analyse_id || analyseId);
                     statusMsg.className = 'status-msg mb-4 status-success';
-                    statusMsg.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> Analyse terminee ! '
-                        + '<a href="' + urlResultats + '" class="btn btn-sm btn-success ms-3"><i class="bi bi-arrow-right me-1"></i> Voir les resultats</a>';
+                    statusMsg.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> ' + t('progress.termine') + ' '
+                        + '<a href="' + urlResultats + '" class="btn btn-sm btn-success ms-3">' + t('progress.voir_resultats') + '</a>';
                 }
 
                 // Reactiver la navigation
@@ -884,7 +940,7 @@ function demarrerSuiviProgression(jobId, analyseId) {
                 }
                 if (statusMsg) {
                     statusMsg.className = 'status-msg mb-4 status-error';
-                    statusMsg.innerHTML = '<i class="bi bi-x-circle-fill me-1"></i> ' + echapper(prog.details || prog.message || 'Erreur lors de l\'analyse');
+                    statusMsg.innerHTML = '<i class="bi bi-x-circle-fill me-1"></i> ' + echapper(prog.details || prog.message || t('msg.erreur_analyse'));
                 }
 
                 // Reactiver la navigation
@@ -927,7 +983,7 @@ async function chargerHistorique(page = 1) {
             corps.innerHTML = `
                 <tr>
                     <td colspan="7" class="text-center text-muted py-4">
-                        Aucune analyse dans l'historique.
+                        ${t('historique.vide')}
                     </td>
                 </tr>
             `;
@@ -940,7 +996,7 @@ async function chargerHistorique(page = 1) {
         // Evenements sur les boutons d'action
         corps.querySelectorAll('[data-supprimer]').forEach(btn => {
             btn.addEventListener('click', async () => {
-                if (confirm('Supprimer cette analyse ? Cette action est irreversible.')) {
+                if (confirm(t('historique.confirmer_suppression'))) {
                     await supprimerAnalyse(btn.dataset.supprimer);
                     chargerHistorique(page);
                 }
@@ -958,7 +1014,7 @@ async function chargerHistorique(page = 1) {
         corps.innerHTML = `
             <tr>
                 <td colspan="7" class="text-center text-danger py-4">
-                    Erreur : ${erreur.message}
+                    ${t('msg.erreur', {err: erreur.message})}
                 </td>
             </tr>
         `;
@@ -978,16 +1034,16 @@ function renderLigneHistorique(analyse) {
     let badgeStatut;
     switch (analyse.statut) {
         case 'termine':
-            badgeStatut = '<span class="badge bg-success">Termine</span>';
+            badgeStatut = '<span class="badge bg-success">' + t('statut.termine') + '</span>';
             break;
         case 'en_cours':
-            badgeStatut = '<span class="badge bg-warning text-dark">En cours</span>';
+            badgeStatut = '<span class="badge bg-warning text-dark">' + t('statut.en_cours') + '</span>';
             break;
         case 'erreur':
-            badgeStatut = '<span class="badge bg-danger">Erreur</span>';
+            badgeStatut = '<span class="badge bg-danger">' + t('statut.erreur') + '</span>';
             break;
         default:
-            badgeStatut = `<span class="badge bg-secondary">${echapper(analyse.statut || 'Inconnu')}</span>`;
+            badgeStatut = `<span class="badge bg-secondary">${echapper(analyse.statut || t('statut.inconnu'))}</span>`;
     }
 
     let couleurScore;
@@ -1117,9 +1173,9 @@ async function supprimerAnalyse(analyseId) {
             method: 'POST',
             body: formData,
         });
-        afficherToast('Analyse supprimee.', 'success');
+        afficherToast(t('msg.analyse_supprimee'), 'success');
     } catch (erreur) {
-        afficherToast('Erreur lors de la suppression : ' + erreur.message, 'danger');
+        afficherToast(t('msg.erreur_suppression', {err: erreur.message}), 'danger');
     }
 }
 
@@ -1169,9 +1225,9 @@ function mettreAJourIndicateurNlp(params) {
 
     const cleConfiguree = !!(params.google_nlp_api_key);
     if (cleConfiguree) {
-        indicateur.innerHTML = '<span class="badge bg-success"><i class="bi bi-cloud-check me-1"></i> Mode Google NLP actif</span>';
+        indicateur.innerHTML = '<span class="badge bg-success">' + t('param.nlp_google_actif') + '</span>';
     } else {
-        indicateur.innerHTML = '<span class="badge bg-secondary"><i class="bi bi-book me-1"></i> Mode lexique local (fallback)</span>';
+        indicateur.innerHTML = '<span class="badge bg-secondary">' + t('param.nlp_lexique_local') + '</span>';
     }
 }
 
@@ -1212,7 +1268,7 @@ function initFormulairesParametres() {
             const bouton = form.querySelector('button[type="submit"]');
             if (bouton) {
                 bouton.disabled = true;
-                bouton.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Enregistrement...';
+                bouton.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> ' + t('msg.enregistrement');
             }
 
             try {
@@ -1223,18 +1279,18 @@ function initFormulairesParametres() {
                     body: JSON.stringify(donnees),
                 });
 
-                afficherToast(reponse.message || 'Parametres enregistres.', 'success');
+                afficherToast(reponse.message || t('msg.parametres_enregistres'), 'success');
 
                 // Mettre a jour l'indicateur NLP si on vient du formulaire NLP
                 if (form.id === 'formulaireParametresNlp') {
                     mettreAJourIndicateurNlp(donnees);
                 }
             } catch (erreur) {
-                afficherToast('Erreur : ' + erreur.message, 'danger');
+                afficherToast(t('msg.erreur', {err: erreur.message}), 'danger');
             } finally {
                 if (bouton) {
                     bouton.disabled = false;
-                    bouton.textContent = 'Enregistrer';
+                    bouton.textContent = t('msg.enregistrer');
                 }
             }
         });
@@ -1297,7 +1353,7 @@ async function chargerResultatsAnalyse(analyseId) {
         if (conteneur) {
             conteneur.innerHTML = `
                 <div class="alert alert-danger m-3">
-                    <strong>Erreur :</strong> ${erreur.message}
+                    <strong>${t('msg.erreur', {err: ''})}</strong> ${erreur.message}
                 </div>
             `;
         }
@@ -1318,16 +1374,13 @@ function renderIndicateurQualite(stats) {
 
     if (mode === 'navigateur' || mode === 'pullpush') {
         el.className = 'alert alert-success mb-4';
-        const src = mode === 'pullpush' ? 'PullPush.io (archive Reddit)' : 'mode Navigateur';
+        const src = mode === 'pullpush' ? t('msg.mode_pullpush') : t('msg.mode_navigateur');
         el.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> '
-            + '<strong>Donnees completes</strong> — Analyse basee sur les donnees Reddit directes (' + src + '). '
-            + 'Engagement, auteurs et scores disponibles.';
+            + t('msg.donnees_completes', {src: src});
     } else if (mode === 'serpapi') {
         el.className = 'alert alert-warning mb-4';
         el.innerHTML = '<i class="bi bi-exclamation-triangle-fill me-1"></i> '
-            + '<strong>Donnees partielles</strong> — Analyse basee sur les snippets Google (SerpAPI). '
-            + 'Les metriques d\'engagement (score, commentaires, awards) ne sont pas disponibles. '
-            + '<br><small>Pour des resultats plus complets, relancez l\'analyse en mode Navigateur.</small>';
+            + t('msg.donnees_partielles');
     } else {
         el.style.display = 'none';
     }
@@ -1364,7 +1417,7 @@ function renderSynthese(data) {
     // KPIs de synthese
     const elVolume = document.getElementById('synthese-volume');
     if (elVolume) {
-        elVolume.textContent = (stats.total_publications || 0).toLocaleString('fr-FR');
+        elVolume.textContent = (stats.total_publications || 0).toLocaleString(langueActuelle === 'en' ? 'en-US' : 'fr-FR');
     }
     const elVolumeDetail = document.getElementById('synthese-volume-detail');
     if (elVolumeDetail) {
@@ -1376,15 +1429,15 @@ function renderSynthese(data) {
     if (elSentiment) {
         const dist = stats.distribution_sentiment || {};
         const maxSentiment = Math.max(dist.positif || 0, dist.neutre || 0, dist.negatif || 0);
-        let sentimentDominant = 'Neutre';
+        let sentimentDominant = t('sentiment.neutre');
         if (maxSentiment > 0) {
-            if ((dist.positif || 0) === maxSentiment) sentimentDominant = 'Positif';
-            else if ((dist.negatif || 0) === maxSentiment) sentimentDominant = 'Negatif';
+            if ((dist.positif || 0) === maxSentiment) sentimentDominant = t('sentiment.positif');
+            else if ((dist.negatif || 0) === maxSentiment) sentimentDominant = t('sentiment.negatif');
         }
         elSentiment.textContent = sentimentDominant;
         elSentiment.className = 'fw-bold mt-2 mb-1 h2';
-        if (sentimentDominant === 'Positif') elSentiment.classList.add('text-success');
-        else if (sentimentDominant === 'Negatif') elSentiment.classList.add('text-danger');
+        if (sentimentDominant === t('sentiment.positif')) elSentiment.classList.add('text-success');
+        else if (sentimentDominant === t('sentiment.negatif')) elSentiment.classList.add('text-danger');
     }
     const elSentimentDetail = document.getElementById('synthese-sentiment-detail');
     if (elSentimentDetail) {
@@ -1483,7 +1536,7 @@ function renderGraphiqueSentiment(sentiments) {
     const chart = new Chart(canvas, {
         type: 'doughnut',
         data: {
-            labels: ['Positif', 'Neutre', 'Negatif'],
+            labels: [t('sentiment.positif'), t('sentiment.neutre'), t('sentiment.negatif')],
             datasets: [{
                 data: [positif, neutre, negatif],
                 backgroundColor: [COULEURS_GRAPHIQUES.vert, COULEURS_GRAPHIQUES.gris, COULEURS_GRAPHIQUES.rouge],
@@ -1538,7 +1591,7 @@ function renderGraphiqueTemporel(temporel) {
             labels: temporel.labels,
             datasets: [
                 {
-                    label: 'Positif',
+                    label: t('sentiment.positif'),
                     data: temporel.positif || [],
                     borderColor: COULEURS_GRAPHIQUES.vert,
                     backgroundColor: COULEURS_GRAPHIQUES.vert + '20',
@@ -1548,7 +1601,7 @@ function renderGraphiqueTemporel(temporel) {
                     pointHoverRadius: 6,
                 },
                 {
-                    label: 'Neutre',
+                    label: t('sentiment.neutre'),
                     data: temporel.neutre || [],
                     borderColor: COULEURS_GRAPHIQUES.gris,
                     backgroundColor: COULEURS_GRAPHIQUES.gris + '20',
@@ -1558,7 +1611,7 @@ function renderGraphiqueTemporel(temporel) {
                     pointHoverRadius: 6,
                 },
                 {
-                    label: 'Negatif',
+                    label: t('sentiment.negatif'),
                     data: temporel.negatif || [],
                     borderColor: COULEURS_GRAPHIQUES.rouge,
                     backgroundColor: COULEURS_GRAPHIQUES.rouge + '20',
@@ -1622,7 +1675,7 @@ function renderSujets(data) {
     if (!corps) return;
 
     if (sujets.length === 0) {
-        corps.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-4">Aucun sujet identifie.</td></tr>';
+        corps.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-4">' + t('sujets.aucun') + '</td></tr>';
         return;
     }
 
@@ -1735,7 +1788,7 @@ function renderQuestions(data) {
     if (!conteneur) return;
 
     if (questions.length === 0) {
-        conteneur.innerHTML = '<p class="text-muted text-center py-4">Aucune question identifiee.</p>';
+        conteneur.innerHTML = '<p class="text-muted text-center py-4">' + t('questions.aucune_identifiee') + '</p>';
         return;
     }
 
@@ -1812,17 +1865,17 @@ function renderDiscussions(data) {
     if (!conteneur) return;
 
     if (discussions.length === 0) {
-        conteneur.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">Aucune discussion identifiee.</td></tr>';
+        conteneur.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">' + t('discussions.aucune') + '</td></tr>';
         return;
     }
 
     // Boutons de filtre
     if (filtres) {
         const types = [
-            { cle: 'toutes', label: 'Toutes' },
-            { cle: 'virale_positive', label: 'Virales +' },
-            { cle: 'virale_negative', label: 'Virales -' },
-            { cle: 'controversee', label: 'Controversees' },
+            { cle: 'toutes', label: t('discussions.toutes') },
+            { cle: 'virale_positive', label: t('type.virale_positive') },
+            { cle: 'virale_negative', label: t('type.virale_negative') },
+            { cle: 'controversee', label: t('type.controversee') },
         ];
 
         filtres.innerHTML = types.map((t, i) => `
@@ -1857,19 +1910,19 @@ function renderDiscussions(data) {
         switch (d.type) {
             case 'virale_positive':
                 couleurBordure = COULEURS_GRAPHIQUES.vert;
-                badgeType = '<span class="badge bg-success">Virale +</span>';
+                badgeType = '<span class="badge bg-success">' + t('type.virale_positive') + '</span>';
                 break;
             case 'virale_negative':
                 couleurBordure = COULEURS_GRAPHIQUES.rouge;
-                badgeType = '<span class="badge bg-danger">Virale -</span>';
+                badgeType = '<span class="badge bg-danger">' + t('type.virale_negative') + '</span>';
                 break;
             case 'controversee':
                 couleurBordure = COULEURS_GRAPHIQUES.gold;
-                badgeType = '<span class="badge bg-warning text-dark">Controversee</span>';
+                badgeType = '<span class="badge bg-warning text-dark">' + t('type.controversee') + '</span>';
                 break;
             default:
                 couleurBordure = COULEURS_GRAPHIQUES.gris;
-                badgeType = '<span class="badge bg-secondary">Standard</span>';
+                badgeType = '<span class="badge bg-secondary">' + t('type.standard') + '</span>';
         }
 
         return `
@@ -1881,7 +1934,7 @@ function renderDiscussions(data) {
                 </td>
                 <td><small class="text-muted">r/${echapper(d.subreddit || '')}</small></td>
                 <td>${badgeType}</td>
-                <td>${(d.engagement || d.score || 0).toLocaleString('fr-FR')}</td>
+                <td>${(d.engagement || d.score || 0).toLocaleString(langueActuelle === 'en' ? 'en-US' : 'fr-FR')}</td>
                 <td>${d.commentaires || 0}</td>
                 <td>${formaterDate(d.date)}</td>
             </tr>
@@ -1924,10 +1977,10 @@ function renderScatterDiscussions(discussions) {
     });
 
     const labelsType = {
-        virale_positive: 'Virale +',
-        virale_negative: 'Virale -',
-        controversee: 'Controversee',
-        standard: 'Standard',
+        virale_positive: t('type.virale_positive'),
+        virale_negative: t('type.virale_negative'),
+        controversee: t('type.controversee'),
+        standard: t('type.standard'),
     };
 
     const datasets = Object.entries(groupes).map(([type, points]) => ({
@@ -1950,7 +2003,7 @@ function renderScatterDiscussions(discussions) {
                 x: {
                     title: {
                         display: true,
-                        text: 'Engagement',
+                        text: t('chart.engagement'),
                         font: { weight: '600' },
                     },
                     grid: { color: '#e5e7eb' },
@@ -1958,7 +2011,7 @@ function renderScatterDiscussions(discussions) {
                 y: {
                     title: {
                         display: true,
-                        text: 'Sentiment',
+                        text: t('chart.sentiment'),
                         font: { weight: '600' },
                     },
                     grid: { color: '#e5e7eb' },
@@ -2001,7 +2054,7 @@ function renderFacteurs(data) {
     const colPositifs = document.getElementById('facteurs-positifs');
     if (colPositifs) {
         if (positifs.length === 0) {
-            colPositifs.innerHTML = '<p class="text-muted">Aucun facteur positif identifie.</p>';
+            colPositifs.innerHTML = '<p class="text-muted">' + t('facteurs.aucun_positif') + '</p>';
         } else {
             colPositifs.innerHTML = positifs.map(f => renderCarteFacteur(f, 'positif')).join('');
         }
@@ -2011,7 +2064,7 @@ function renderFacteurs(data) {
     const colNegatifs = document.getElementById('facteurs-negatifs');
     if (colNegatifs) {
         if (negatifs.length === 0) {
-            colNegatifs.innerHTML = '<p class="text-muted">Aucun facteur negatif identifie.</p>';
+            colNegatifs.innerHTML = '<p class="text-muted">' + t('facteurs.aucun_negatif') + '</p>';
         } else {
             colNegatifs.innerHTML = negatifs.map(f => renderCarteFacteur(f, 'negatif')).join('');
         }
@@ -2051,7 +2104,7 @@ function renderCarteFacteur(facteur, type) {
                 <div class="progress" style="height: 6px;">
                     <div class="progress-bar" style="width: ${largeurBarre}%; background: ${couleur};" role="progressbar"></div>
                 </div>
-                <small class="text-muted">Frequence : ${facteur.frequence || facteur.count || 0} mentions</small>
+                <small class="text-muted">${t('facteurs.frequence', {n: facteur.frequence || facteur.count || 0})}</small>
             </div>
         </div>
     `;
@@ -2077,7 +2130,7 @@ function renderRadarFacteurs(dimensions) {
         data: {
             labels: labels,
             datasets: [{
-                label: 'Score de reputation',
+                label: t('chart.score_reputation'),
                 data: valeurs,
                 backgroundColor: COULEURS_GRAPHIQUES.teal + '30',
                 borderColor: COULEURS_GRAPHIQUES.teal,
@@ -2149,14 +2202,14 @@ function renderEngagement(data) {
     const auteurs = engagement.auteurs || [];
     if (corpsAuteurs) {
         if (auteurs.length === 0) {
-            corpsAuteurs.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">Aucun auteur identifie.</td></tr>';
+            corpsAuteurs.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">' + t('engagement.aucun_auteur') + '</td></tr>';
         } else {
             corpsAuteurs.innerHTML = auteurs.map(a => {
                 let badgeInfluence = '';
                 if (a.influence === 'forte' || a.est_power_user) {
-                    badgeInfluence = '<span class="badge bg-warning text-dark ms-1"><i class="bi bi-star-fill"></i> Power User</span>';
+                    badgeInfluence = '<span class="badge bg-warning text-dark ms-1"><i class="bi bi-star-fill"></i> ' + t('power_user.badge') + '</span>';
                 } else if (a.influence === 'moyenne') {
-                    badgeInfluence = '<span class="badge bg-info text-dark ms-1">Actif</span>';
+                    badgeInfluence = '<span class="badge bg-info text-dark ms-1">' + t('power_user.actif') + '</span>';
                 }
 
                 return `
@@ -2168,7 +2221,7 @@ function renderEngagement(data) {
                             ${badgeInfluence}
                         </td>
                         <td>${a.posts || a.nombre_posts || 0}</td>
-                        <td>${(a.karma || a.score_total || 0).toLocaleString('fr-FR')}</td>
+                        <td>${(a.karma || a.score_total || 0).toLocaleString(langueActuelle === 'en' ? 'en-US' : 'fr-FR')}</td>
                         <td>${a.sentiment_moyen !== undefined ? a.sentiment_moyen.toFixed(2) : '—'}</td>
                         <td>${echapper(a.subreddits_principaux || a.top_subreddit || '')}</td>
                     </tr>
@@ -2184,7 +2237,7 @@ function renderEngagement(data) {
         if (powerUsers.length > 0) {
             zonePowerUsers.innerHTML = `
                 <div class="alert alert-warning">
-                    <strong><i class="bi bi-star-fill"></i> Power Users identifies :</strong>
+                    ${t('power_user.identifies')}
                     ${powerUsers.map(u => `<span class="badge bg-dark ms-1">u/${echapper(u.nom || u.username || '')}</span>`).join('')}
                 </div>
             `;
@@ -2217,7 +2270,7 @@ function renderGraphiqueEngagementSubreddits(subreddits) {
         data: {
             labels: labels,
             datasets: [{
-                label: 'Engagement',
+                label: t('chart.engagement'),
                 data: valeurs,
                 backgroundColor: COULEURS_GRAPHIQUES.serie.slice(0, subreddits.length).map(c => c + 'CC'),
                 borderColor: COULEURS_GRAPHIQUES.serie.slice(0, subreddits.length),
@@ -2235,7 +2288,7 @@ function renderGraphiqueEngagementSubreddits(subreddits) {
                     grid: { color: '#e5e7eb' },
                     title: {
                         display: true,
-                        text: 'Score d\'engagement',
+                        text: t('chart.score_engagement'),
                         font: { weight: '600' },
                     },
                 },
@@ -2248,7 +2301,7 @@ function renderGraphiqueEngagementSubreddits(subreddits) {
                 tooltip: {
                     callbacks: {
                         label: function(context) {
-                            return ` Engagement : ${context.parsed.x.toLocaleString('fr-FR')}`;
+                            return ` Engagement : ${context.parsed.x.toLocaleString(langueActuelle === 'en' ? 'en-US' : 'fr-FR')}`;
                         },
                     },
                 },
@@ -2274,20 +2327,20 @@ function renderGeographie(data) {
     const corps = document.getElementById('corpsGeographie');
     if (corps) {
         if (regions.length === 0) {
-            corps.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-4">Aucune donnee geographique disponible.</td></tr>';
+            corps.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-4">' + t('geographie.aucune') + '</td></tr>';
         } else {
             corps.innerHTML = regions.map(r => {
                 const sentimentScore = r.sentiment_score || r.sentiment || 0;
                 let couleurSentiment, labelSentiment;
                 if (sentimentScore > 0.2) {
                     couleurSentiment = 'text-success';
-                    labelSentiment = 'Positif';
+                    labelSentiment = t('sentiment.positif');
                 } else if (sentimentScore < -0.2) {
                     couleurSentiment = 'text-danger';
-                    labelSentiment = 'Negatif';
+                    labelSentiment = t('sentiment.negatif');
                 } else {
                     couleurSentiment = 'text-muted';
-                    labelSentiment = 'Neutre';
+                    labelSentiment = t('sentiment.neutre');
                 }
 
                 return `
@@ -2333,7 +2386,7 @@ function renderGraphiqueGeographie(regions) {
         data: {
             labels: labels,
             datasets: [{
-                label: 'Mentions',
+                label: t('chart.mentions'),
                 data: mentions,
                 backgroundColor: couleurs,
                 borderColor: couleurs.map(c => c.replace('CC', '')),
@@ -2351,7 +2404,7 @@ function renderGraphiqueGeographie(regions) {
                     grid: { color: '#e5e7eb' },
                     title: {
                         display: true,
-                        text: 'Nombre de mentions',
+                        text: t('chart.nombre_mentions'),
                         font: { weight: '600' },
                     },
                 },
@@ -2419,7 +2472,7 @@ function renderOpportunites(data) {
         }
 
         if (!html) {
-            html = '<p class="text-muted text-center py-4">Aucune opportunite identifiee.</p>';
+            html = '<p class="text-muted text-center py-4">' + t('opportunites.aucune') + '</p>';
         }
 
         conteneur.innerHTML = html;
@@ -2430,7 +2483,7 @@ function renderOpportunites(data) {
     const recommandations = opportunites.recommandations || data.recommandations || [];
     if (listeRecos) {
         if (recommandations.length === 0) {
-            listeRecos.innerHTML = '<p class="text-muted">Aucune recommandation.</p>';
+            listeRecos.innerHTML = '<p class="text-muted">' + t('opportunites.aucune_recommandation') + '</p>';
         } else {
             listeRecos.innerHTML = `
                 <ul class="list-group list-group-flush">
@@ -2529,12 +2582,12 @@ function initComparaison() {
         });
 
         if (marqueIds.length < 2) {
-            afficherToast('Selectionnez au moins 2 marques a comparer.', 'warning');
+            afficherToast(t('msg.min_2_marques'), 'warning');
             return;
         }
 
         if (marqueIds.length > 5) {
-            afficherToast('Maximum 5 marques pour la comparaison.', 'warning');
+            afficherToast(t('msg.max_5_marques'), 'warning');
             return;
         }
 
@@ -2580,7 +2633,7 @@ async function chargerMarquesComparaison() {
         const marques = reponse.donnees || reponse || [];
 
         if (marques.length === 0) {
-            conteneur.innerHTML = '<p class="text-muted">Aucune marque disponible. Lancez d\'abord des analyses.</p>';
+            conteneur.innerHTML = '<p class="text-muted">' + t('msg.aucune_marque_dispo') + '</p>';
             return;
         }
 
@@ -2595,7 +2648,7 @@ async function chargerMarquesComparaison() {
             </div>
         `).join('');
     } catch (erreur) {
-        conteneur.innerHTML = `<p class="text-danger">Erreur : ${erreur.message}</p>`;
+        conteneur.innerHTML = `<p class="text-danger">${t('msg.erreur', {err: erreur.message})}</p>`;
     }
 }
 
@@ -2668,7 +2721,7 @@ function renderComparaisonSentiment(data) {
             labels: labels,
             datasets: [
                 {
-                    label: 'Positif',
+                    label: t('sentiment.positif'),
                     data: marques.map(m => (m.sentiments?.positif || 0)),
                     backgroundColor: COULEURS_GRAPHIQUES.vert + 'CC',
                     borderColor: COULEURS_GRAPHIQUES.vert,
@@ -2676,7 +2729,7 @@ function renderComparaisonSentiment(data) {
                     borderRadius: 4,
                 },
                 {
-                    label: 'Neutre',
+                    label: t('sentiment.neutre'),
                     data: marques.map(m => (m.sentiments?.neutre || 0)),
                     backgroundColor: COULEURS_GRAPHIQUES.gris + 'CC',
                     borderColor: COULEURS_GRAPHIQUES.gris,
@@ -2684,7 +2737,7 @@ function renderComparaisonSentiment(data) {
                     borderRadius: 4,
                 },
                 {
-                    label: 'Negatif',
+                    label: t('sentiment.negatif'),
                     data: marques.map(m => (m.sentiments?.negatif || 0)),
                     backgroundColor: COULEURS_GRAPHIQUES.rouge + 'CC',
                     borderColor: COULEURS_GRAPHIQUES.rouge,
@@ -2702,7 +2755,7 @@ function renderComparaisonSentiment(data) {
                     grid: { color: '#e5e7eb' },
                     title: {
                         display: true,
-                        text: 'Pourcentage',
+                        text: t('chart.pourcentage'),
                         font: { weight: '600' },
                     },
                 },
@@ -2731,7 +2784,7 @@ function renderComparaisonSujets(data) {
     const marques = data.marques || [];
 
     if (marques.length === 0) {
-        conteneur.innerHTML = '<p class="text-muted text-center">Aucune donnee.</p>';
+        conteneur.innerHTML = '<p class="text-muted text-center">' + t('msg.aucune_donnee') + '</p>';
         return;
     }
 
@@ -2815,7 +2868,7 @@ function renderComparaisonTemporelle(data) {
                     grid: { color: '#e5e7eb' },
                     title: {
                         display: true,
-                        text: 'Score de reputation',
+                        text: t('chart.score_reputation'),
                         font: { weight: '600' },
                     },
                 },
@@ -2844,7 +2897,7 @@ function renderComparaisonTableau(data) {
     const marques = data.marques || [];
 
     if (marques.length === 0) {
-        corps.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">Aucune donnee.</td></tr>';
+        corps.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">' + t('msg.aucune_donnee') + '</td></tr>';
         return;
     }
 
@@ -2872,11 +2925,11 @@ function renderComparaisonTableau(data) {
                     <span class="text-muted">${sentiments.neutre || 0}%</span> /
                     <span class="text-danger">${sentiments.negatif || 0}%</span>
                 </td>
-                <td>${(m.volume || m.nombre_posts || 0).toLocaleString('fr-FR')}</td>
+                <td>${(m.volume || m.nombre_posts || 0).toLocaleString(langueActuelle === 'en' ? 'en-US' : 'fr-FR')}</td>
                 <td>${topSujet ? echapper(topSujet.nom || topSujet.label || '') : '—'}</td>
                 <td>
                     ${m.derniere_analyse_id
-                        ? `<a href="${BASE_URL}/resultats.php?analyse_id=${m.derniere_analyse_id}" class="btn btn-sm btn-outline-primary">Voir</a>`
+                        ? `<a href="${BASE_URL}/resultats.php?analyse_id=${m.derniere_analyse_id}" class="btn btn-sm btn-outline-primary">${t('carte.voir_resultats')}</a>`
                         : '—'
                     }
                 </td>
@@ -2890,6 +2943,9 @@ function renderComparaisonTableau(data) {
    ========================================================================== */
 
 document.addEventListener('DOMContentLoaded', async () => {
+    traduirePage();
+    initLangueSelect();
+
     await chargerChartJs();
     configurerChartJs();
 

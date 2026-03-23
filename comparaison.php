@@ -95,9 +95,17 @@ $marques = $bd->selectionner(
 <?php if (!defined('PLATFORM_EMBEDDED')): ?>
 <nav class="navbar mb-4">
     <div class="container d-flex justify-content-between align-items-center">
-        <span class="navbar-brand mb-0 h1">Reddit Reputation
-            <span class="d-block d-sm-inline ms-sm-2">Comparaison de marques</span>
+        <span class="navbar-brand mb-0 h1" data-i18n="nav.title">Reddit Reputation
+            <span class="d-block d-sm-inline ms-sm-2" data-i18n="nav.subtitle.comparaison">Comparaison de marques</span>
         </span>
+        <?php if (!defined('PLATFORM_EMBEDDED')): ?>
+        <select id="lang-select" class="form-select form-select-sm"
+                style="width:auto; background-color:rgba(255,255,255,0.15); color:#fff;
+                       border-color:rgba(255,255,255,0.3); font-size:0.8rem;">
+            <option value="fr">FR</option>
+            <option value="en">EN</option>
+        </select>
+        <?php endif; ?>
     </div>
 </nav>
 <?php endif; ?>
@@ -105,20 +113,20 @@ $marques = $bd->selectionner(
 <div class="container pb-5" data-page="comparaison" style="max-width:1200px;">
 
     <!-- Lien retour -->
-    <a href="index.php" class="btn btn-sm btn-outline-secondary mb-4">
+    <a href="index.php" class="btn btn-sm btn-outline-secondary mb-4" data-i18n="comparaison.retour">
         <i class="bi bi-arrow-left me-1"></i> Retour au tableau de bord
     </a>
 
     <!-- ===== SELECTEUR DE MARQUES ===== -->
     <div class="card mb-4">
         <div class="card-header">
-            <h5 class="mb-0 fw-bold"><i class="bi bi-bar-chart-line me-2"></i>Comparer des marques</h5>
+            <h5 class="mb-0 fw-bold" data-i18n="comparaison.titre"><i class="bi bi-bar-chart-line me-2"></i>Comparer des marques</h5>
         </div>
         <div class="card-body">
-            <p class="text-muted mb-3">Selectionnez entre 2 et 5 marques pour les comparer.</p>
+            <p class="text-muted mb-3" data-i18n="comparaison.instruction">Selectionnez entre 2 et 5 marques pour les comparer.</p>
 
             <?php if (empty($marques)): ?>
-                <div class="alert alert-warning mb-0">
+                <div class="alert alert-warning mb-0" data-i18n="comparaison.aucune_marque">
                     <i class="bi bi-exclamation-triangle me-1"></i> Aucune marque disponible. Lancez d'abord une analyse depuis le tableau de bord.
                 </div>
             <?php else: ?>
@@ -142,7 +150,7 @@ $marques = $bd->selectionner(
                                         <?= htmlspecialchars((string)$marque['dernier_score']) ?>/100
                                     </span>
                                 <?php else: ?>
-                                    <span class="badge bg-secondary">Pas de score</span>
+                                    <span class="badge bg-secondary" data-i18n="comparaison.pas_de_score">Pas de score</span>
                                 <?php endif; ?>
                             </label>
                         </div>
@@ -150,7 +158,7 @@ $marques = $bd->selectionner(
                     </div>
                 </div>
 
-                <button type="button" class="btn btn-primary fw-semibold px-4" id="btnComparer" disabled>
+                <button type="button" class="btn btn-primary fw-semibold px-4" id="btnComparer" disabled data-i18n="comparaison.comparer">
                     <i class="bi bi-bar-chart-line me-1"></i> Comparer
                 </button>
                 <small class="text-muted ms-2" id="compteurSelection">0 marque(s) selectionnee(s)</small>
@@ -161,7 +169,7 @@ $marques = $bd->selectionner(
     <!-- Zone de chargement -->
     <div id="chargementComparaison" class="text-center py-5" style="display:none;">
         <div class="spinner-border text-primary mb-3" role="status"></div>
-        <p class="text-muted">Chargement de la comparaison...</p>
+        <p class="text-muted" data-i18n="comparaison.chargement">Chargement de la comparaison...</p>
     </div>
 
     <!-- ===== RESULTATS DE COMPARAISON ===== -->
@@ -173,7 +181,7 @@ $marques = $bd->selectionner(
         <!-- 2. Graphique en barres des scores -->
         <div class="card mb-4">
             <div class="card-header">
-                <h5 class="mb-0 fw-bold"><i class="bi bi-bar-chart-fill me-2"></i>Comparaison des scores</h5>
+                <h5 class="mb-0 fw-bold" data-i18n="comparaison.scores"><i class="bi bi-bar-chart-fill me-2"></i>Comparaison des scores</h5>
             </div>
             <div class="card-body">
                 <canvas id="graphiqueScores" height="80"></canvas>
@@ -183,7 +191,7 @@ $marques = $bd->selectionner(
         <!-- 3. Comparaison des sentiments (donuts) -->
         <div class="card mb-4">
             <div class="card-header">
-                <h5 class="mb-0 fw-bold"><i class="bi bi-pie-chart-fill me-2"></i>Repartition des sentiments</h5>
+                <h5 class="mb-0 fw-bold" data-i18n="comparaison.sentiments"><i class="bi bi-pie-chart-fill me-2"></i>Repartition des sentiments</h5>
             </div>
             <div class="card-body">
                 <div class="row g-3" id="donutsSentiments"></div>
@@ -193,7 +201,7 @@ $marques = $bd->selectionner(
         <!-- 4. Tableau comparatif des sujets -->
         <div class="card mb-4">
             <div class="card-header">
-                <h5 class="mb-0 fw-bold"><i class="bi bi-tags-fill me-2"></i>Comparaison par sujet</h5>
+                <h5 class="mb-0 fw-bold" data-i18n="comparaison.par_sujet"><i class="bi bi-tags-fill me-2"></i>Comparaison par sujet</h5>
             </div>
             <div class="table-responsive">
                 <table class="table table-sm mb-0" id="tableauSujets">
@@ -206,7 +214,7 @@ $marques = $bd->selectionner(
         <!-- 5. Evolution temporelle -->
         <div class="card mb-4">
             <div class="card-header">
-                <h5 class="mb-0 fw-bold"><i class="bi bi-graph-up me-2"></i>Evolution temporelle</h5>
+                <h5 class="mb-0 fw-bold" data-i18n="comparaison.evolution"><i class="bi bi-graph-up me-2"></i>Evolution temporelle</h5>
             </div>
             <div class="card-body">
                 <canvas id="graphiqueEvolution" height="100"></canvas>
@@ -216,7 +224,7 @@ $marques = $bd->selectionner(
         <!-- 6. Tableau recapitulatif -->
         <div class="card mb-4">
             <div class="card-header">
-                <h5 class="mb-0 fw-bold"><i class="bi bi-table me-2"></i>Tableau recapitulatif</h5>
+                <h5 class="mb-0 fw-bold" data-i18n="comparaison.recap"><i class="bi bi-table me-2"></i>Tableau recapitulatif</h5>
             </div>
             <div class="table-responsive">
                 <table class="table table-sm mb-0" id="tableauRecap">
@@ -233,6 +241,7 @@ $marques = $bd->selectionner(
 <!-- Bootstrap JS + Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="assets/js/chart.umd.min.js"></script>
+<script src="translations.js"></script>
 <script src="app.js"></script>
 <script>
 (function() {
@@ -281,7 +290,7 @@ $marques = $bd->selectionner(
         });
 
         // Compteur
-        compteur.textContent = nb + ' marque(s) selectionnee(s)';
+        compteur.textContent = t('comparaison.compteur', {n: nb});
 
         // Desactiver/activer les checkboxes au-dela de 5
         checkboxes.forEach(function(cb) {
@@ -335,7 +344,7 @@ $marques = $bd->selectionner(
                 '<div class="score-jauge ' + jaugeClass + '">' + score + '</div>' +
                 '<h6 class="fw-bold mb-1" style="color:' + COULEURS_MARQUES[i % COULEURS_MARQUES.length] + '">' +
                     escHtml(m.nom) + '</h6>' +
-                '<small class="text-muted">' + (m.volume || 0) + ' publications</small>' +
+                '<small class="text-muted">' + (m.volume || 0) + ' ' + t('comparaison.publications') + '</small>' +
                 '</div></div></div>';
         }).join('');
     }
@@ -354,7 +363,7 @@ $marques = $bd->selectionner(
             data: {
                 labels: donnees.map(function(m) { return m.nom; }),
                 datasets: [{
-                    label: 'Score de reputation',
+                    label: t('chart.score_reputation'),
                     data: donnees.map(function(m) { return m.score; }),
                     backgroundColor: donnees.map(function(m, i) { return COULEURS_MARQUES[i % COULEURS_MARQUES.length]; }),
                     borderRadius: 6,
@@ -365,7 +374,7 @@ $marques = $bd->selectionner(
                 responsive: true,
                 plugins: { legend: { display: false } },
                 scales: {
-                    y: { beginAtZero: true, max: 100, title: { display: true, text: 'Score /100' } }
+                    y: { beginAtZero: true, max: 100, title: { display: true, text: t('chart.score_100') } }
                 }
             }
         });
@@ -400,7 +409,7 @@ $marques = $bd->selectionner(
             const chart = new Chart(ctx, {
                 type: 'doughnut',
                 data: {
-                    labels: ['Positif', 'Neutre', 'Negatif'],
+                    labels: [t('sentiment.positif'), t('sentiment.neutre'), t('sentiment.negatif')],
                     datasets: [{
                         data: [sent.positif || 0, sent.neutre || 0, sent.negatif || 0],
                         backgroundColor: ['#198754', '#6c757d', '#dc3545'],
@@ -445,7 +454,7 @@ $marques = $bd->selectionner(
 
         // Corps
         if (sujets.length === 0) {
-            corps.innerHTML = '<tr><td colspan="' + (donnees.length + 1) + '" class="text-center text-muted py-3">Aucun sujet disponible</td></tr>';
+            corps.innerHTML = '<tr><td colspan="' + (donnees.length + 1) + '" class="text-center text-muted py-3">' + t('msg.aucun_sujet') + '</td></tr>';
             return;
         }
 
@@ -482,7 +491,7 @@ $marques = $bd->selectionner(
         const dates = Object.keys(datesSet).sort();
 
         if (dates.length === 0) {
-            ctx.parentNode.innerHTML = '<p class="text-center text-muted py-3">Aucune donnee temporelle disponible.</p>';
+            ctx.parentNode.innerHTML = '<p class="text-center text-muted py-3">' + t('msg.aucune_donnee_temporelle') + '</p>';
             return;
         }
 
@@ -514,8 +523,8 @@ $marques = $bd->selectionner(
                     legend: { position: 'top' }
                 },
                 scales: {
-                    y: { beginAtZero: true, max: 100, title: { display: true, text: 'Score /100' } },
-                    x: { title: { display: true, text: 'Date' } }
+                    y: { beginAtZero: true, max: 100, title: { display: true, text: t('chart.score_100') } },
+                    x: { title: { display: true, text: t('chart.date') } }
                 }
             }
         });
@@ -536,19 +545,19 @@ $marques = $bd->selectionner(
 
         const lignes = [
             {
-                label: 'Score',
+                label: t('recap.score'),
                 valeurs: donnees.map(function(m) { return m.score !== null ? Math.round(m.score) : null; }),
                 format: function(v) { return v !== null ? v + '/100' : '—'; },
                 meilleur: 'max'
             },
             {
-                label: 'Volume',
+                label: t('recap.volume'),
                 valeurs: donnees.map(function(m) { return m.volume || 0; }),
-                format: function(v) { return v.toLocaleString('fr-FR'); },
+                format: function(v) { return v.toLocaleString(langueActuelle === 'en' ? 'en-US' : 'fr-FR'); },
                 meilleur: 'max'
             },
             {
-                label: '% Positif',
+                label: t('recap.pct_positif'),
                 valeurs: donnees.map(function(m) {
                     var s = m.sentiments || {};
                     var total = (s.positif || 0) + (s.neutre || 0) + (s.negatif || 0);
@@ -558,7 +567,7 @@ $marques = $bd->selectionner(
                 meilleur: 'max'
             },
             {
-                label: '% Negatif',
+                label: t('recap.pct_negatif'),
                 valeurs: donnees.map(function(m) {
                     var s = m.sentiments || {};
                     var total = (s.positif || 0) + (s.neutre || 0) + (s.negatif || 0);
@@ -568,13 +577,13 @@ $marques = $bd->selectionner(
                 meilleur: 'min'
             },
             {
-                label: 'Top subreddit',
+                label: t('recap.top_subreddit'),
                 valeurs: donnees.map(function(m) { return m.top_subreddit || '—'; }),
                 format: function(v) { return escHtml(v); },
                 meilleur: null
             },
             {
-                label: 'Top sujet',
+                label: t('recap.top_sujet'),
                 valeurs: donnees.map(function(m) { return m.top_sujet || '—'; }),
                 format: function(v) { return escHtml(v); },
                 meilleur: null
@@ -635,7 +644,7 @@ $marques = $bd->selectionner(
 
             if (!json.donnees || !Array.isArray(json.donnees) || json.donnees.length < 2) {
                 if (resultats) resultats.style.display = 'none';
-                alert(json.message || 'Erreur lors de la comparaison.');
+                alert(json.message || t('msg.erreur_comparaison'));
                 return;
             }
 
@@ -655,7 +664,7 @@ $marques = $bd->selectionner(
         .catch(function(erreur) {
             if (chargement) chargement.style.display = 'none';
             console.error('Erreur comparaison:', erreur);
-            alert('Erreur lors de la comparaison. Veuillez reessayer.');
+            alert(t('msg.erreur_comparaison'));
         });
     }
 
