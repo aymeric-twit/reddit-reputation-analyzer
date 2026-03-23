@@ -17,9 +17,10 @@ header('Content-Type: application/json; charset=utf-8');
 try {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         http_response_code(405);
-        echo json_encode([
-            'erreur' => 'Methode non autorisee. Utilisez POST.',
-        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        echo json_encode(
+            construireErreur('Methode non autorisee. Utilisez POST.', 'Method not allowed. Use POST.'),
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
+        );
         exit;
     }
 
@@ -42,9 +43,10 @@ try {
 
     if ($marqueId === null || $marqueId === '') {
         http_response_code(400);
-        echo json_encode([
-            'erreur' => 'Le parametre marque_id est requis.',
-        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        echo json_encode(
+            construireErreur('Le parametre marque_id est requis.', 'The marque_id parameter is required.'),
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
+        );
         exit;
     }
 
@@ -59,9 +61,10 @@ try {
 
     if ($marque === null) {
         http_response_code(404);
-        echo json_encode([
-            'erreur' => 'Marque introuvable.',
-        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        echo json_encode(
+            construireErreur('Marque introuvable.', 'Brand not found.'),
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
+        );
         exit;
     }
 
@@ -121,14 +124,21 @@ try {
         rmdir($dossierJob);
     }
 
-    echo json_encode([
-        'succes'  => true,
-        'message' => sprintf('Marque "%s" et toutes ses donnees supprimees avec succes.', $marque['nom']),
-    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+    echo json_encode(array_merge(
+        ['succes' => true],
+        construireMessage(
+            sprintf('Marque "%s" et toutes ses donnees supprimees avec succes.', $marque['nom']),
+            sprintf('Brand "%s" and all its data deleted successfully.', $marque['nom'])
+        )
+    ), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
 
 } catch (\Throwable $e) {
     http_response_code(500);
-    echo json_encode([
-        'erreur' => 'Erreur interne : ' . $e->getMessage(),
-    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+    echo json_encode(
+        construireErreur(
+            'Erreur interne : ' . $e->getMessage(),
+            'Internal error: ' . $e->getMessage()
+        ),
+        JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
+    );
 }

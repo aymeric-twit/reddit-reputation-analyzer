@@ -90,3 +90,37 @@ foreach (['SERPAPI_KEY', 'GOOGLE_NLP_API_KEY'] as $cleEnv) {
 
 // Charger le fichier .env a la racine du projet (fallback standalone)
 chargerEnvironnement(__DIR__ . '/.env');
+
+// --- Helper pour les reponses JSON d'erreur bilingues ---
+
+/**
+ * Construit un tableau d'erreur bilingue pour les reponses JSON.
+ *
+ * @param string $messageFr Message en francais
+ * @param string $messageEn Message en anglais
+ * @return array{erreur: string, erreur_fr: string, erreur_en: string}
+ */
+function construireErreur(string $messageFr, string $messageEn): array
+{
+    return [
+        'erreur'    => $messageFr,
+        'erreur_fr' => $messageFr,
+        'erreur_en' => $messageEn,
+    ];
+}
+
+/**
+ * Construit un tableau de succes bilingue pour les reponses JSON.
+ *
+ * @param string $messageFr Message en francais
+ * @param string $messageEn Message en anglais
+ * @return array{message: string, message_fr: string, message_en: string}
+ */
+function construireMessage(string $messageFr, string $messageEn): array
+{
+    return [
+        'message'    => $messageFr,
+        'message_fr' => $messageFr,
+        'message_en' => $messageEn,
+    ];
+}

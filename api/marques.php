@@ -16,9 +16,10 @@ header('Content-Type: application/json; charset=utf-8');
 try {
     if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
         http_response_code(405);
-        echo json_encode([
-            'erreur' => 'Methode non autorisee. Utilisez GET.',
-        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        echo json_encode(
+            construireErreur('Methode non autorisee. Utilisez GET.', 'Method not allowed. Use GET.'),
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
+        );
         exit;
     }
 
@@ -109,14 +110,18 @@ try {
         ];
     }
 
-    echo json_encode([
-        'donnees' => $resultats,
-        'message' => 'Liste des marques recuperee avec succes.',
-    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+    echo json_encode(array_merge(
+        ['donnees' => $resultats],
+        construireMessage('Liste des marques recuperee avec succes.', 'Brand list retrieved successfully.')
+    ), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
 
 } catch (\Throwable $e) {
     http_response_code(500);
-    echo json_encode([
-        'erreur' => 'Erreur interne : ' . $e->getMessage(),
-    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+    echo json_encode(
+        construireErreur(
+            'Erreur interne : ' . $e->getMessage(),
+            'Internal error: ' . $e->getMessage()
+        ),
+        JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
+    );
 }

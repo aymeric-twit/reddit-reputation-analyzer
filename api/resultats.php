@@ -16,9 +16,10 @@ header('Content-Type: application/json; charset=utf-8');
 try {
     if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
         http_response_code(405);
-        echo json_encode([
-            'erreur' => 'Methode non autorisee. Utilisez GET.',
-        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        echo json_encode(
+            construireErreur('Methode non autorisee. Utilisez GET.', 'Method not allowed. Use GET.'),
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
+        );
         exit;
     }
 
@@ -26,9 +27,10 @@ try {
 
     if ($analyseId === null || $analyseId === '') {
         http_response_code(400);
-        echo json_encode([
-            'erreur' => 'Le parametre analyse_id est requis.',
-        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        echo json_encode(
+            construireErreur('Le parametre analyse_id est requis.', 'The analyse_id parameter is required.'),
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
+        );
         exit;
     }
 
@@ -46,9 +48,10 @@ try {
 
     if ($analyse === null) {
         http_response_code(404);
-        echo json_encode([
-            'erreur' => 'Analyse introuvable.',
-        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        echo json_encode(
+            construireErreur('Analyse introuvable.', 'Analysis not found.'),
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
+        );
         exit;
     }
 
@@ -179,14 +182,21 @@ try {
                 'mode_collecte'     => $statsGlobales['mode_collecte'] ?? 'serpapi',
             ],
         ],
-        'message' => 'Resultats de l\'analyse recuperes avec succes.',
+        ...construireMessage(
+            'Resultats de l\'analyse recuperes avec succes.',
+            'Analysis results retrieved successfully.'
+        ),
     ];
 
     echo json_encode($reponse, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
 
 } catch (\Throwable $e) {
     http_response_code(500);
-    echo json_encode([
-        'erreur' => 'Erreur interne : ' . $e->getMessage(),
-    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+    echo json_encode(
+        construireErreur(
+            'Erreur interne : ' . $e->getMessage(),
+            'Internal error: ' . $e->getMessage()
+        ),
+        JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
+    );
 }

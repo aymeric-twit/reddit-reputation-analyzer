@@ -39,9 +39,10 @@ function slugifier(string $texte): string
 try {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         http_response_code(405);
-        echo json_encode([
-            'erreur' => 'Methode non autorisee. Utilisez POST.',
-        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        echo json_encode(
+            construireErreur('Methode non autorisee. Utilisez POST.', 'Method not allowed. Use POST.'),
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
+        );
         exit;
     }
 
@@ -84,26 +85,38 @@ try {
     // --- Validation ---
     if ($marque === '') {
         http_response_code(422);
-        echo json_encode([
-            'erreur' => 'Le parametre "marque" ou "marque_id" est requis.',
-        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        echo json_encode(
+            construireErreur(
+                'Le parametre "marque" ou "marque_id" est requis.',
+                'The parameter "marque" or "marque_id" is required.'
+            ),
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
+        );
         exit;
     }
 
     $periodesValides = ['hour', 'day', 'week', 'month', 'year', 'all'];
     if (!in_array($periode, $periodesValides, true)) {
         http_response_code(422);
-        echo json_encode([
-            'erreur' => 'Periode invalide. Valeurs acceptees : ' . implode(', ', $periodesValides),
-        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        echo json_encode(
+            construireErreur(
+                'Periode invalide. Valeurs acceptees : ' . implode(', ', $periodesValides),
+                'Invalid period. Accepted values: ' . implode(', ', $periodesValides)
+            ),
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
+        );
         exit;
     }
 
     if ($limite < 10 || $limite > 5000) {
         http_response_code(422);
-        echo json_encode([
-            'erreur' => 'La limite doit etre comprise entre 10 et 5000.',
-        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        echo json_encode(
+            construireErreur(
+                'La limite doit etre comprise entre 10 et 5000.',
+                'The limit must be between 10 and 5000.'
+            ),
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
+        );
         exit;
     }
 
@@ -111,7 +124,10 @@ try {
     if (class_exists('\\Platform\\Module\\Quota')) {
         if (!\Platform\Module\Quota::creditsDisponibles('reddit-reputation')) {
             http_response_code(429);
-            echo json_encode(['erreur' => 'Crédits épuisés'], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+            echo json_encode(
+                construireErreur('Crédits épuisés', 'Credits exhausted'),
+                JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
+            );
             exit;
         }
     }
@@ -224,16 +240,22 @@ try {
 
     // --- Reponse ---
     http_response_code(201);
-    echo json_encode([
-        'succes'     => true,
-        'job_id'     => $jobId,
-        'analyse_id' => $analyseId,
-        'message'    => 'Analyse lancee avec succes.',
-    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+    echo json_encode(array_merge(
+        [
+            'succes'     => true,
+            'job_id'     => $jobId,
+            'analyse_id' => $analyseId,
+        ],
+        construireMessage('Analyse lancee avec succes.', 'Analysis started successfully.')
+    ), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
 
 } catch (\Throwable $e) {
     http_response_code(500);
-    echo json_encode([
-        'erreur' => 'Erreur interne : ' . $e->getMessage(),
-    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+    echo json_encode(
+        construireErreur(
+            'Erreur interne : ' . $e->getMessage(),
+            'Internal error: ' . $e->getMessage()
+        ),
+        JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
+    );
 }

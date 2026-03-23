@@ -16,9 +16,10 @@ header('Content-Type: application/json; charset=utf-8');
 try {
     if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
         http_response_code(405);
-        echo json_encode([
-            'erreur' => 'Methode non autorisee. Utilisez GET.',
-        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        echo json_encode(
+            construireErreur('Methode non autorisee. Utilisez GET.', 'Method not allowed. Use GET.'),
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
+        );
         exit;
     }
 
@@ -26,9 +27,13 @@ try {
 
     if ($marqueIdsChaine === '') {
         http_response_code(400);
-        echo json_encode([
-            'erreur' => 'Le parametre marque_ids est requis (ex: 1,2,3).',
-        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        echo json_encode(
+            construireErreur(
+                'Le parametre marque_ids est requis (ex: 1,2,3).',
+                'The marque_ids parameter is required (e.g. 1,2,3).'
+            ),
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
+        );
         exit;
     }
 
@@ -36,9 +41,13 @@ try {
 
     if (count($marqueIds) < 2 || count($marqueIds) > 5) {
         http_response_code(422);
-        echo json_encode([
-            'erreur' => 'Veuillez fournir entre 2 et 5 identifiants de marques.',
-        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        echo json_encode(
+            construireErreur(
+                'Veuillez fournir entre 2 et 5 identifiants de marques.',
+                'Please provide between 2 and 5 brand identifiers.'
+            ),
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
+        );
         exit;
     }
 
@@ -132,14 +141,18 @@ try {
         ];
     }
 
-    echo json_encode([
-        'donnees' => $donneesComparaison,
-        'message' => 'Comparaison des marques recuperee avec succes.',
-    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+    echo json_encode(array_merge(
+        ['donnees' => $donneesComparaison],
+        construireMessage('Comparaison des marques recuperee avec succes.', 'Brand comparison retrieved successfully.')
+    ), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
 
 } catch (\Throwable $e) {
     http_response_code(500);
-    echo json_encode([
-        'erreur' => 'Erreur interne : ' . $e->getMessage(),
-    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+    echo json_encode(
+        construireErreur(
+            'Erreur interne : ' . $e->getMessage(),
+            'Internal error: ' . $e->getMessage()
+        ),
+        JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
+    );
 }

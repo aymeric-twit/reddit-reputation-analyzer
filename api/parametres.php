@@ -47,10 +47,10 @@ try {
             }
         }
 
-        echo json_encode([
-            'donnees' => $resultat,
-            'message' => 'Parametres recuperes avec succes.',
-        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        echo json_encode(array_merge(
+            ['donnees' => $resultat],
+            construireMessage('Parametres recuperes avec succes.', 'Parameters retrieved successfully.')
+        ), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
 
     } elseif ($methode === 'POST') {
         // --- Mise a jour des parametres ---
@@ -58,9 +58,10 @@ try {
 
         if ($corpsRequete === false || $corpsRequete === '') {
             http_response_code(400);
-            echo json_encode([
-                'erreur' => 'Corps de requete vide.',
-            ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+            echo json_encode(
+                construireErreur('Corps de requete vide.', 'Empty request body.'),
+                JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
+            );
             exit;
         }
 
@@ -68,9 +69,13 @@ try {
 
         if (!is_array($donnees)) {
             http_response_code(400);
-            echo json_encode([
-                'erreur' => 'Format JSON invalide. Attendu : objet avec des paires cle/valeur.',
-            ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+            echo json_encode(
+                construireErreur(
+                    'Format JSON invalide. Attendu : objet avec des paires cle/valeur.',
+                    'Invalid JSON format. Expected: object with key/value pairs.'
+                ),
+                JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
+            );
             exit;
         }
 
@@ -97,26 +102,38 @@ try {
             $mises_a_jour++;
         }
 
-        echo json_encode([
-            'succes'  => true,
-            'message' => "{$mises_a_jour} parametre(s) mis a jour avec succes.",
-        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        echo json_encode(array_merge(
+            ['succes' => true],
+            construireMessage(
+                "{$mises_a_jour} parametre(s) mis a jour avec succes.",
+                "{$mises_a_jour} parameter(s) updated successfully."
+            )
+        ), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
 
     } else {
         http_response_code(405);
-        echo json_encode([
-            'erreur' => 'Methode non autorisee. Utilisez GET ou POST.',
-        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        echo json_encode(
+            construireErreur('Methode non autorisee. Utilisez GET ou POST.', 'Method not allowed. Use GET or POST.'),
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
+        );
     }
 
 } catch (JsonException $e) {
     http_response_code(400);
-    echo json_encode([
-        'erreur' => 'JSON invalide : ' . $e->getMessage(),
-    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+    echo json_encode(
+        construireErreur(
+            'JSON invalide : ' . $e->getMessage(),
+            'Invalid JSON: ' . $e->getMessage()
+        ),
+        JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
+    );
 } catch (\Throwable $e) {
     http_response_code(500);
-    echo json_encode([
-        'erreur' => 'Erreur interne : ' . $e->getMessage(),
-    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+    echo json_encode(
+        construireErreur(
+            'Erreur interne : ' . $e->getMessage(),
+            'Internal error: ' . $e->getMessage()
+        ),
+        JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
+    );
 }

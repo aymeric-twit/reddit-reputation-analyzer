@@ -22,9 +22,10 @@ try {
 
     if ($jobId === null || !is_string($jobId) || $jobId === '') {
         http_response_code(400);
-        echo json_encode([
-            'erreur' => 'Le parametre job_id est requis',
-        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        echo json_encode(
+            construireErreur('Le parametre job_id est requis', 'The job_id parameter is required'),
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
+        );
         exit;
     }
 
@@ -93,12 +94,17 @@ try {
 
 } catch (JsonException $e) {
     http_response_code(500);
-    echo json_encode([
-        'erreur' => 'Fichier de progression corrompu',
-    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+    echo json_encode(
+        construireErreur('Fichier de progression corrompu', 'Corrupted progress file'),
+        JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
+    );
 } catch (\Throwable $e) {
     http_response_code(500);
-    echo json_encode([
-        'erreur' => 'Erreur interne : ' . $e->getMessage(),
-    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+    echo json_encode(
+        construireErreur(
+            'Erreur interne : ' . $e->getMessage(),
+            'Internal error: ' . $e->getMessage()
+        ),
+        JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
+    );
 }

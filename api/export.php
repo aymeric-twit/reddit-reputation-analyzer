@@ -15,9 +15,10 @@ try {
     if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
         header('Content-Type: application/json; charset=utf-8');
         http_response_code(405);
-        echo json_encode([
-            'erreur' => 'Methode non autorisee. Utilisez GET.',
-        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        echo json_encode(
+            construireErreur('Methode non autorisee. Utilisez GET.', 'Method not allowed. Use GET.'),
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
+        );
         exit;
     }
 
@@ -27,18 +28,23 @@ try {
     if ($analyseId === null || $analyseId === '') {
         header('Content-Type: application/json; charset=utf-8');
         http_response_code(400);
-        echo json_encode([
-            'erreur' => 'Le parametre analyse_id est requis.',
-        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        echo json_encode(
+            construireErreur('Le parametre analyse_id est requis.', 'The analyse_id parameter is required.'),
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
+        );
         exit;
     }
 
     if (!in_array($format, ['csv', 'json'], true)) {
         header('Content-Type: application/json; charset=utf-8');
         http_response_code(422);
-        echo json_encode([
-            'erreur' => 'Format invalide. Valeurs acceptees : csv, json.',
-        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        echo json_encode(
+            construireErreur(
+                'Format invalide. Valeurs acceptees : csv, json.',
+                'Invalid format. Accepted values: csv, json.'
+            ),
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
+        );
         exit;
     }
 
@@ -57,9 +63,10 @@ try {
     if ($analyse === null) {
         header('Content-Type: application/json; charset=utf-8');
         http_response_code(404);
-        echo json_encode([
-            'erreur' => 'Analyse introuvable.',
-        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        echo json_encode(
+            construireErreur('Analyse introuvable.', 'Analysis not found.'),
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
+        );
         exit;
     }
 
@@ -186,7 +193,11 @@ try {
 } catch (\Throwable $e) {
     header('Content-Type: application/json; charset=utf-8');
     http_response_code(500);
-    echo json_encode([
-        'erreur' => 'Erreur interne : ' . $e->getMessage(),
-    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+    echo json_encode(
+        construireErreur(
+            'Erreur interne : ' . $e->getMessage(),
+            'Internal error: ' . $e->getMessage()
+        ),
+        JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
+    );
 }

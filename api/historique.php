@@ -16,9 +16,10 @@ header('Content-Type: application/json; charset=utf-8');
 try {
     if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
         http_response_code(405);
-        echo json_encode([
-            'erreur' => 'Methode non autorisee. Utilisez GET.',
-        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        echo json_encode(
+            construireErreur('Methode non autorisee. Utilisez GET.', 'Method not allowed. Use GET.'),
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
+        );
         exit;
     }
 
@@ -87,20 +88,26 @@ try {
 
     $totalPages = (int) ceil($total / $parPage);
 
-    echo json_encode([
-        'donnees' => $resultats,
-        'pagination' => [
-            'page'        => $page,
-            'par_page'    => $parPage,
-            'total'       => $total,
-            'total_pages' => $totalPages,
+    echo json_encode(array_merge(
+        [
+            'donnees' => $resultats,
+            'pagination' => [
+                'page'        => $page,
+                'par_page'    => $parPage,
+                'total'       => $total,
+                'total_pages' => $totalPages,
+            ],
         ],
-        'message' => 'Historique des analyses recupere avec succes.',
-    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        construireMessage('Historique des analyses recupere avec succes.', 'Analysis history retrieved successfully.')
+    ), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
 
 } catch (\Throwable $e) {
     http_response_code(500);
-    echo json_encode([
-        'erreur' => 'Erreur interne : ' . $e->getMessage(),
-    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+    echo json_encode(
+        construireErreur(
+            'Erreur interne : ' . $e->getMessage(),
+            'Internal error: ' . $e->getMessage()
+        ),
+        JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
+    );
 }

@@ -68,6 +68,26 @@ function changerLangue(lg) {
 const BASE_URL = window.MODULE_BASE_URL || '.';
 
 /**
+ * Extrait le message d'erreur bilingue depuis une reponse JSON serveur.
+ * Priorise erreur_fr/erreur_en selon la langue active, fallback sur erreur.
+ */
+function extraireErreurServeur(data) {
+    if (langueActuelle === 'en' && data.erreur_en) return data.erreur_en;
+    if (langueActuelle === 'fr' && data.erreur_fr) return data.erreur_fr;
+    return data.erreur_fr || data.erreur_en || data.erreur || '';
+}
+
+/**
+ * Extrait le message de succes bilingue depuis une reponse JSON serveur.
+ * Priorise message_fr/message_en selon la langue active, fallback sur message.
+ */
+function extraireMessageServeur(data) {
+    if (langueActuelle === 'en' && data.message_en) return data.message_en;
+    if (langueActuelle === 'fr' && data.message_fr) return data.message_fr;
+    return data.message_fr || data.message_en || data.message || '';
+}
+
+/**
  * Wrapper autour de fetch avec gestion d'erreurs.
  *
  * @param {string} endpoint  Chemin relatif (ex: '/api/marques.php')
@@ -105,7 +125,7 @@ async function appelerApi(endpoint, options = {}) {
             let messageErreur;
             try {
                 const jsonErreur = JSON.parse(texteErreur);
-                messageErreur = jsonErreur.message || jsonErreur.erreur || t('msg.erreur_http', {code: reponse.status});
+                messageErreur = extraireErreurServeur(jsonErreur) || jsonErreur.message || t('msg.erreur_http', {code: reponse.status});
             } catch {
                 messageErreur = t('msg.erreur_http', {code: reponse.status});
             }
